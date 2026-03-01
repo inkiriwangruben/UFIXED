@@ -1,0 +1,363 @@
+import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import {
+  Dimensions,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+type Kategori = 'IT' | 'Non-IT';
+
+const FormLaporan: React.FC = () => {
+  const router = useRouter();
+  const [kategori, setKategori] = useState<Kategori>('IT');
+  const [judul, setJudul] = useState('');
+  const [deskripsi, setDeskripsi] = useState('');
+
+  const handleKirim = () => {
+    // TODO: implementasi submit
+    router.back();
+  };
+
+  const horizontalPadding = Math.max(16, Math.min(24, SCREEN_WIDTH * 0.06));
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+      >
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            {
+              paddingHorizontal: horizontalPadding,
+              paddingBottom: 40,
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => router.back()}
+            >
+              <Feather name="arrow-left" size={24} color="#111827" />
+            </TouchableOpacity>
+            <Text style={styles.title}>Buat Laporan Baru</Text>
+            <Text style={styles.subtitle}>
+              Laporkan Kerusakan Barang di Kampus
+            </Text>
+          </View>
+
+          {/* Kategori Kerusakan */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Kategori Kerusakan</Text>
+            <View style={styles.kategoriRow}>
+              <TouchableOpacity
+                style={[
+                  styles.kategoriCard,
+                  kategori === 'IT' && styles.kategoriCardActive,
+                ]}
+                onPress={() => setKategori('IT')}
+              >
+                <View
+                  style={[
+                    styles.kategoriIconWrap,
+                    kategori === 'IT' && styles.kategoriIconWrapIT,
+                  ]}
+                >
+                  <Feather
+                    name="monitor"
+                    size={28}
+                    color={kategori === 'IT' ? '#FFFFFF' : '#9CA3AF'}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.kategoriTitle,
+                    kategori === 'IT' && styles.kategoriTitleActive,
+                  ]}
+                >
+                  IT
+                </Text>
+                <View style={styles.kategoriDescWrap}>
+                  <Text
+                    style={[
+                      styles.kategoriDesc,
+                      kategori === 'IT' && styles.kategoriDescITActive,
+                    ]}
+                    numberOfLines={2}
+                  >
+                    Komputer, Proyektor, WiFi
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.kategoriCard,
+                  kategori === 'Non-IT' && styles.kategoriCardNonITActive,
+                ]}
+                onPress={() => setKategori('Non-IT')}
+              >
+                <View
+                  style={[
+                    styles.kategoriIconWrap,
+                    kategori === 'Non-IT' && styles.kategoriIconWrapNonIT,
+                  ]}
+                >
+                  <Feather
+                    name="tool"
+                    size={28}
+                    color={kategori === 'Non-IT' ? '#FFFFFF' : '#9CA3AF'}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.kategoriTitle,
+                    kategori === 'Non-IT' && styles.kategoriTitleNonITActive,
+                  ]}
+                >
+                  Non-IT
+                </Text>
+                <View style={styles.kategoriDescWrap}>
+                  <Text
+                    style={[
+                      styles.kategoriDesc,
+                      kategori === 'Non-IT' && styles.kategoriDescNonITActive,
+                    ]}
+                    numberOfLines={2}
+                  >
+                    AC, Kursi, Meja, Pintu
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Judul Laporan */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Judul Laporan</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Contoh: Proyektor 301 tidak menyala"
+              placeholderTextColor="#9CA3AF"
+              value={judul}
+              onChangeText={setJudul}
+            />
+          </View>
+
+          {/* Deskripsi Kerusakan */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Deskripsi Kerusakan</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="Jelaskan detail kerusakan, lokasi dan kapan terjadi.."
+              placeholderTextColor="#9CA3AF"
+              value={deskripsi}
+              onChangeText={setDeskripsi}
+              multiline
+              numberOfLines={4}
+            />
+            <Text style={styles.hint}>Minimal 20 Karakter</Text>
+          </View>
+
+          {/* Upload Foto */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Upload Foto (Opsional)</Text>
+            <TouchableOpacity style={styles.uploadArea}>
+              <Feather name="camera" size={40} color="#9CA3AF" />
+              <Text style={styles.uploadText}>Pilih atau ambil foto</Text>
+              <Text style={styles.uploadHint}>
+                PNG, JPG hingga 5mb (Maksimal 3 foto)
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Kirim Button */}
+          <TouchableOpacity
+            style={styles.submitButton}
+            onPress={handleKirim}
+          >
+            <Text style={styles.submitText}>Kirim Laporan</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+};
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingTop: Platform.OS === 'android' ? 12 : 16,
+  },
+  header: {
+    marginBottom: 20,
+  },
+  backButton: {
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: SCREEN_WIDTH < 360 ? 20 : 22,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  section: {
+    marginBottom: 18,
+    width: '100%',
+  },
+  sectionLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 10,
+  },
+  kategoriRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  kategoriCard: {
+    flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  kategoriCardActive: {
+    borderColor: '#1E5BFF',
+    backgroundColor: '#EFF6FF',
+  },
+  kategoriIconWrapIT: {
+    backgroundColor: '#1E5BFF',
+    padding: 8,
+    borderRadius: 8,
+  },
+  kategoriCardNonITActive: {
+    borderColor: '#F97316',
+    backgroundColor: '#FFF7ED',
+  },
+  kategoriIconWrap: {
+    marginBottom: 8,
+  },
+  kategoriIconWrapNonIT: {
+    backgroundColor: '#F97316',
+    padding: 8,
+    borderRadius: 8,
+  },
+  kategoriTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#6B7280',
+  },
+  kategoriTitleActive: {
+    color: '#1E5BFF',
+  },
+  kategoriTitleNonITActive: {
+    color: '#111827',
+  },
+  kategoriDescWrap: {
+    alignSelf: 'stretch',
+    paddingHorizontal: 4,
+    marginTop: 2,
+  },
+  kategoriDesc: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    textAlign: 'center',
+  },
+  kategoriDescITActive: {
+    color: '#6B7280',
+  },
+  kategoriDescNonITActive: {
+    color: '#6B7280',
+  },
+  input: {
+    width: '100%',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: '#111827',
+  },
+  textArea: {
+    minHeight: 90,
+    textAlignVertical: 'top',
+  },
+  hint: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 6,
+  },
+  uploadArea: {
+    width: '100%',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: '#D1D5DB',
+    paddingVertical: 28,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  uploadText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 12,
+  },
+  uploadHint: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 4,
+  },
+  submitButton: {
+    width: '100%',
+    backgroundColor: '#1E5BFF',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  submitText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+});
+
+export default FormLaporan;
