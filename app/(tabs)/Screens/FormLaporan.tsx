@@ -54,7 +54,7 @@ const FormLaporan: React.FC = () => {
           <View style={styles.header}>
             <TouchableOpacity
               style={styles.backButton}
-              onPress={() => router.back()}
+              onPress={() => router.replace('/(tabs)/Screens/DashboardPelapor')}
             >
               <Feather name="arrow-left" size={24} color="#111827" />
             </TouchableOpacity>
@@ -68,29 +68,31 @@ const FormLaporan: React.FC = () => {
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Kategori Kerusakan</Text>
             <View style={styles.kategoriRow}>
+              {/* Kartu IT */}
               <TouchableOpacity
                 style={[
                   styles.kategoriCard,
-                  kategori === 'IT' && styles.kategoriCardActive,
+                  kategori === 'IT' && styles.kategoriCardITActive,
                 ]}
                 onPress={() => setKategori('IT')}
+                activeOpacity={0.85}
               >
                 <View
                   style={[
                     styles.kategoriIconWrap,
-                    kategori === 'IT' && styles.kategoriIconWrapIT,
+                    kategori === 'IT' && styles.kategoriIconWrapITActive,
                   ]}
                 >
                   <Feather
                     name="monitor"
                     size={28}
-                    color={kategori === 'IT' ? '#FFFFFF' : '#9CA3AF'}
+                    color={kategori === 'IT' ? '#FFFFFF' : '#2563EB'}
                   />
                 </View>
                 <Text
                   style={[
                     styles.kategoriTitle,
-                    kategori === 'IT' && styles.kategoriTitleActive,
+                    kategori === 'IT' && styles.kategoriTitleITActive,
                   ]}
                 >
                   IT
@@ -99,32 +101,36 @@ const FormLaporan: React.FC = () => {
                   <Text
                     style={[
                       styles.kategoriDesc,
-                      kategori === 'IT' && styles.kategoriDescITActive,
+                      kategori === 'IT' && styles.kategoriDescActive,
                     ]}
                     numberOfLines={2}
                   >
-                    Komputer, Proyektor, WiFi
+                    Komputer,Proyektor,
+                    {'\n'}
+                    wifi
                   </Text>
                 </View>
               </TouchableOpacity>
 
+              {/* Kartu Non-IT */}
               <TouchableOpacity
                 style={[
                   styles.kategoriCard,
                   kategori === 'Non-IT' && styles.kategoriCardNonITActive,
                 ]}
                 onPress={() => setKategori('Non-IT')}
+                activeOpacity={0.85}
               >
                 <View
                   style={[
                     styles.kategoriIconWrap,
-                    kategori === 'Non-IT' && styles.kategoriIconWrapNonIT,
+                    kategori === 'Non-IT' && styles.kategoriIconWrapNonITActive,
                   ]}
                 >
                   <Feather
                     name="tool"
                     size={28}
-                    color={kategori === 'Non-IT' ? '#FFFFFF' : '#9CA3AF'}
+                    color={kategori === 'Non-IT' ? '#FFFFFF' : '#6B7280'}
                   />
                 </View>
                 <Text
@@ -139,11 +145,13 @@ const FormLaporan: React.FC = () => {
                   <Text
                     style={[
                       styles.kategoriDesc,
-                      kategori === 'Non-IT' && styles.kategoriDescNonITActive,
+                      kategori === 'Non-IT' && styles.kategoriDescActive,
                     ]}
                     numberOfLines={2}
                   >
-                    AC, Kursi, Meja, Pintu
+                    AC,Kursi,Meja,
+                    {'\n'}
+                    Pintu
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -206,6 +214,7 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0,
   },
   keyboardView: {
     flex: 1,
@@ -249,41 +258,43 @@ const styles = StyleSheet.create({
     flexBasis: 0,
     minWidth: 0,
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 2,
     borderColor: '#E5E7EB',
-    paddingVertical: 14,
-    paddingHorizontal: 8,
+    paddingVertical: 18,
+    paddingHorizontal: 14,
     alignItems: 'center',
   },
-  kategoriCardActive: {
-    borderColor: '#1E5BFF',
+  kategoriCardITActive: {
+    borderColor: '#2563EB',
     backgroundColor: '#EFF6FF',
-  },
-  kategoriIconWrapIT: {
-    backgroundColor: '#1E5BFF',
-    padding: 8,
-    borderRadius: 8,
   },
   kategoriCardNonITActive: {
     borderColor: '#F97316',
     backgroundColor: '#FFF7ED',
   },
   kategoriIconWrap: {
-    marginBottom: 8,
+    width: 52,
+    height: 52,
+    borderRadius: 12,
+    backgroundColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
   },
-  kategoriIconWrapNonIT: {
+  kategoriIconWrapITActive: {
+    backgroundColor: '#2563EB',
+  },
+  kategoriIconWrapNonITActive: {
     backgroundColor: '#F97316',
-    padding: 8,
-    borderRadius: 8,
   },
   kategoriTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#6B7280',
   },
-  kategoriTitleActive: {
-    color: '#1E5BFF',
+  kategoriTitleITActive: {
+    color: '#2563EB',
   },
   kategoriTitleNonITActive: {
     color: '#111827',
@@ -291,17 +302,14 @@ const styles = StyleSheet.create({
   kategoriDescWrap: {
     alignSelf: 'stretch',
     paddingHorizontal: 4,
-    marginTop: 2,
+    marginTop: 4,
   },
   kategoriDesc: {
     fontSize: 11,
     color: '#9CA3AF',
     textAlign: 'center',
   },
-  kategoriDescITActive: {
-    color: '#6B7280',
-  },
-  kategoriDescNonITActive: {
+  kategoriDescActive: {
     color: '#6B7280',
   },
   input: {
