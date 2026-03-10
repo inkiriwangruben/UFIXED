@@ -1,6 +1,6 @@
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -12,6 +12,7 @@ import {
 
 const DashboardPelapor: React.FC = () => {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<'semua' | 'proses' | 'selesai'>('semua');
 
   // Dummy data untuk contoh
   const laporan = [
@@ -20,7 +21,8 @@ const DashboardPelapor: React.FC = () => {
       title: 'GK 2, komputer lab 1, monitor tidak menyala',
       description:
         'tadi pagi di jam 10:00 saya masuk kelas, dan pada saat saya mau pakai monitor monitornya tidak bisa menyala',
-      status: 'Menunggu',
+      status: 'proses',
+      statusLabel: 'Menunggu',
       icon: 'monitor',
       date: '29/01/2026',
       author: 'Ruben Inkiriwang',
@@ -29,12 +31,21 @@ const DashboardPelapor: React.FC = () => {
       id: '2',
       title: 'AC Perpustakaan Bocor',
       description: 'ac perpustakaan bocor dan air nya keluar terus',
-      status: 'Menunggu',
+      status: 'selesai',
+      statusLabel: 'Selesai',
       icon: 'tools',
       date: '16/01/2026',
       author: 'Ruben Inkiriwang',
     },
   ];
+
+  const filteredLaporan = useMemo(() => {
+    if (activeTab === 'semua') {
+      return laporan;
+    }
+
+    return laporan.filter((item) => item.status === activeTab);
+  }, [activeTab, laporan]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -56,10 +67,16 @@ const DashboardPelapor: React.FC = () => {
             </View>
 
             <View style={styles.headerActions}>
-              <TouchableOpacity style={styles.headerIconButton}>
+              <TouchableOpacity
+                style={styles.headerIconButton}
+                onPress={() => router.push('/(tabs)/Screens/Notifikasi')}
+              >
                 <Feather name="bell" size={18} color="#1E5BFF" />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.headerIconButton}>
+              <TouchableOpacity
+                style={styles.headerIconButton}
+                onPress={() => router.replace('/(tabs)/Screens/LoginScreen')}
+              >
                 <Feather name="log-out" size={18} color="#1E5BFF" />
               </TouchableOpacity>
             </View>
@@ -72,7 +89,7 @@ const DashboardPelapor: React.FC = () => {
                 <Feather name="file-text" size={20} color="#FFFFFF" />
               </View>
               <Text style={styles.statValue}>4</Text>
-              <Text style={styles.statLabel}>Total</Text>
+              <Text style={styles.statLabel}>Semua</Text>
             </View>
             <View style={styles.statCard}>
               <View style={styles.statIconCircle}>
@@ -108,20 +125,64 @@ const DashboardPelapor: React.FC = () => {
 
           {/* TAB */}
           <View style={styles.tabRow}>
-            <TouchableOpacity style={[styles.tabItem, styles.tabItemActive]}>
-              <Text style={[styles.tabText, styles.tabTextActive]}>Semua</Text>
+            <TouchableOpacity
+              style={[
+                styles.tabItem,
+                activeTab === 'semua' && styles.tabItemActive,
+              ]}
+              onPress={() => setActiveTab('semua')}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === 'semua' && styles.tabTextActive,
+                ]}
+              >
+                Semua
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.tabItem}>
-              <Text style={styles.tabText}>Proses</Text>
+            <TouchableOpacity
+              style={[
+                styles.tabItem,
+                activeTab === 'proses' && styles.tabItemActive,
+              ]}
+              onPress={() => setActiveTab('proses')}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === 'proses' && styles.tabTextActive,
+                ]}
+              >
+                Proses
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.tabItem}>
-              <Text style={styles.tabText}>Selesai</Text>
+            <TouchableOpacity
+              style={[
+                styles.tabItem,
+                activeTab === 'selesai' && styles.tabItemActive,
+              ]}
+              onPress={() => setActiveTab('selesai')}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === 'selesai' && styles.tabTextActive,
+                ]}
+              >
+                Selesai
+              </Text>
             </TouchableOpacity>
           </View>
 
           {/* LIST LAPORAN */}
-          {laporan.map((item, index) => (
-            <View key={item.id} style={[styles.reportCard, index > 0 && { marginTop: 12 }]}>
+          {filteredLaporan.map((item, index) => (
+            <TouchableOpacity
+              key={item.id}
+              style={[styles.reportCard, index > 0 && { marginTop: 12 }]}
+              activeOpacity={0.9}
+              onPress={() => router.push('/(tabs)/Screens/DetailLaporan')}
+            >
               <View style={styles.reportHeaderRow}>
                 <View style={styles.reportTitleRow}>
                   <View style={styles.reportIconCircle}>
@@ -141,13 +202,25 @@ const DashboardPelapor: React.FC = () => {
               </Text>
 
               <View style={styles.reportFooterRow}>
-                <View style={styles.statusPill}>
+                <View
+                  style={[
+                    styles.statusPill,
+                    item.status === 'selesai' && styles.statusPillDone,
+                  ]}
+                >
                   <MaterialCommunityIcons
-                    name="clock-outline"
+                    name={item.status === 'selesai' ? 'check-circle-outline' : 'clock-outline'}
                     size={14}
-                    color="#92400E"
+                    color={item.status === 'selesai' ? '#166534' : '#92400E'}
                   />
-                  <Text style={styles.statusText}>Menunggu</Text>
+                  <Text
+                    style={[
+                      styles.statusText,
+                      item.status === 'selesai' && styles.statusTextDone,
+                    ]}
+                  >
+                    {item.statusLabel}
+                  </Text>
                 </View>
                 <View style={styles.reportMetaRow}>
                   <View style={styles.reportMetaItem}>
@@ -160,7 +233,7 @@ const DashboardPelapor: React.FC = () => {
                   </View>
                 </View>
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
 
           {/* space bawah */}
@@ -396,6 +469,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#92400E',
     fontWeight: '600',
+  },
+  statusPillDone: {
+    backgroundColor: '#DCFCE7',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  statusTextDone: {
+    color: '#166534',
   },
   reportMetaRow: {
     flexDirection: 'row',
