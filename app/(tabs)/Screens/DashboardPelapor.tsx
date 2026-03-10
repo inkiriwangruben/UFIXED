@@ -89,7 +89,7 @@ const DashboardPelapor: React.FC = () => {
                 <Feather name="file-text" size={20} color="#FFFFFF" />
               </View>
               <Text style={styles.statValue}>4</Text>
-              <Text style={styles.statLabel}>Total</Text>
+              <Text style={styles.statLabel}>Semua</Text>
             </View>
             <View style={styles.statCard}>
               <View style={styles.statIconCircle}>

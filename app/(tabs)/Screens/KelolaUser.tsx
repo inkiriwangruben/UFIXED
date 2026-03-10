@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native';
 
-type UserRole = 'Admin' | 'Department IT' | 'Tukang' | 'Business Office';
+type UserRole = 'Department IT' | 'Tukang' | 'Business Office';
 
 interface UserItem {
   id: string;
@@ -22,29 +22,23 @@ interface UserItem {
   role: UserRole;
 }
 
-const roleOptions: UserRole[] = ['Admin', 'Department IT', 'Tukang', 'Business Office'];
+const roleOptions: UserRole[] = ['Department IT', 'Tukang', 'Business Office'];
 
-const users: UserItem[] = [
+const initialUsers: UserItem[] = [
   {
     id: '1',
-    name: 'Admin UNKLAB',
-    email: 'admin@unklab.ac.id',
-    role: 'Admin',
-  },
-  {
-    id: '2',
     name: 'IT Support',
     email: 'it@unklab.ac.id',
     role: 'Department IT',
   },
   {
-    id: '3',
+    id: '2',
     name: 'Tukang Kampus',
     email: 'tukang@unklab.ac.id',
     role: 'Tukang',
   },
   {
-    id: '4',
+    id: '3',
     name: 'Business Office',
     email: 'bo@unklab.ac.id',
     role: 'Business Office',
@@ -53,8 +47,6 @@ const users: UserItem[] = [
 
 const getRoleStyle = (role: UserRole) => {
   switch (role) {
-    case 'Admin':
-      return { bg: '#F3E8FF', text: '#7C3AED' };
     case 'Department IT':
       return { bg: '#DBEAFE', text: '#1D4ED8' };
     case 'Tukang':
@@ -67,11 +59,33 @@ const getRoleStyle = (role: UserRole) => {
 
 const KelolaUserScreen: React.FC = () => {
   const router = useRouter();
+  const [userList, setUserList] = useState<UserItem[]>(initialUsers);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserItem | null>(null);
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<string>('');
   const [showRoleMenu, setShowRoleMenu] = useState(false);
+
+  const handleOpenDeleteModal = (user: UserItem) => {
+    setSelectedUser(user);
+    setShowDeleteModal(true);
+  };
+
+  const handleCloseDeleteModal = () => {
+    setShowDeleteModal(false);
+    setSelectedUser(null);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!selectedUser) {
+      return;
+    }
+
+    setUserList(prev => prev.filter(user => user.id !== selectedUser.id));
+    handleCloseDeleteModal();
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -109,7 +123,7 @@ const KelolaUserScreen: React.FC = () => {
         </View>
 
         {/* List User */}
-        {users.map((user) => {
+        {userList.map((user) => {
           const roleStyle = getRoleStyle(user.role);
           return (
             <View key={user.id} style={styles.userCard}>
@@ -143,7 +157,11 @@ const KelolaUserScreen: React.FC = () => {
                 </View>
               </View>
 
-              <TouchableOpacity style={styles.deleteButton}>
+              <TouchableOpacity
+                style={styles.deleteButton}
+                activeOpacity={0.9}
+                onPress={() => handleOpenDeleteModal(user)}
+              >
                 <Feather name="trash-2" size={18} color="#EF4444" />
               </TouchableOpacity>
             </View>
@@ -250,6 +268,39 @@ const KelolaUserScreen: React.FC = () => {
                 }}
               >
                 <Text style={styles.modalButtonSubmitText}>Tambah</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Modal Konfirmasi Hapus User */}
+      {showDeleteModal && selectedUser && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.deleteModalCard}>
+            <View style={styles.deleteModalIconWrap}>
+              <Feather name="alert-triangle" size={20} color="#DC2626" />
+            </View>
+
+            <Text style={styles.deleteModalSubtitle}>
+              {'Apakah Anda yakin ingin menghapus akun ' + selectedUser.name + '?'}
+            </Text>
+
+            <View style={styles.deleteModalButtonRow}>
+              <TouchableOpacity
+                style={styles.deleteModalCancelButton}
+                activeOpacity={0.9}
+                onPress={handleCloseDeleteModal}
+              >
+                <Text style={styles.deleteModalCancelText}>Batal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.deleteModalConfirmButton}
+                activeOpacity={0.9}
+                onPress={handleConfirmDelete}
+              >
+                <Feather name="trash-2" size={14} color="#FFFFFF" />
+                <Text style={styles.deleteModalConfirmText}>Hapus</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -508,7 +559,72 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
+  deleteModalCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
+    elevation: 9,
+  },
+  deleteModalIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 10,
+  },
+  deleteModalSubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  deleteModalButtonRow: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  deleteModalCancelButton: {
+    flex: 1,
+    borderRadius: 999,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E5E7EB',
+  },
+  deleteModalConfirmButton: {
+    flex: 1,
+    borderRadius: 999,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#DC2626',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  deleteModalCancelText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  deleteModalConfirmText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
 });
 
 export default KelolaUserScreen;
+
+
 

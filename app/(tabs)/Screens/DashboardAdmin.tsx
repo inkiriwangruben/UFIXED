@@ -1,4 +1,4 @@
-import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
@@ -7,6 +7,7 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -18,11 +19,11 @@ interface AdminLaporan {
   title: string;
   description: string;
   status: AdminStatus;
-  statusLabel: string;
   statusType: 'process' | 'pending';
   icon: 'monitor' | 'tools';
   date: string;
   author: string;
+  actionState: 'new' | 'in_progress' | 'done';
 }
 
 const dataLaporan: AdminLaporan[] = [
@@ -32,11 +33,11 @@ const dataLaporan: AdminLaporan[] = [
     description:
       'Proyektor di ruang Kuliah 301 tidak dapat menyala sejak pagi ini sudah dicoba berkali-kali namun tetap tidak ada respon',
     status: 'pending',
-    statusLabel: 'Dalam Proses',
     statusType: 'process',
     icon: 'monitor',
     date: '29/01/2026',
     author: 'Ruben Inkiriwang',
+    actionState: 'new',
   },
   {
     id: '2',
@@ -44,35 +45,93 @@ const dataLaporan: AdminLaporan[] = [
     description:
       'tadi pagi di jam 10:00 saya masuk kelas, dan pada saat saya mau pakai monitor monitornya tidak bisa menyala',
     status: 'pending',
-    statusLabel: 'Pending',
     statusType: 'pending',
     icon: 'monitor',
     date: '16/01/2026',
     author: 'Ruben Inkiriwang',
+    actionState: 'new',
   },
   {
     id: '3',
     title: 'AC Perpustakaan Bocor',
     description: 'ac perpustakaan bocor dan air nya keluar terus',
     status: 'verifikasi',
-    statusLabel: 'Pending',
     statusType: 'pending',
     icon: 'tools',
     date: '16/01/2026',
     author: 'Ruben Inkiriwang',
+    actionState: 'new',
   },
 ];
 
 const DashboardAdmin: React.FC = () => {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<AdminStatus>('semua');
+  const [laporanList, setLaporanList] = useState<AdminLaporan[]>(dataLaporan);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [selectedRejectId, setSelectedRejectId] = useState<string | null>(null);
+  const [rejectionReasons, setRejectionReasons] = useState<Record<string, string>>({});
 
   const filteredLaporan = useMemo(() => {
     if (activeTab === 'semua') {
-      return dataLaporan;
+      return laporanList;
     }
-    return dataLaporan.filter(item => item.status === activeTab);
-  }, [activeTab]);
+    return laporanList.filter(item => item.status === activeTab);
+  }, [activeTab, laporanList]);
+
+  const handleAcceptReport = (id: string) => {
+    setLaporanList(prev =>
+      prev.map(item =>
+        item.id === id
+          ? {
+              ...item,
+              actionState: 'in_progress',
+            }
+          : item
+      )
+    );
+  };
+
+  const handleCompleteRepair = (id: string) => {
+    setLaporanList(prev =>
+      prev.map(item =>
+        item.id === id
+          ? {
+              ...item,
+              actionState: 'done',
+            }
+          : item
+      )
+    );
+  };
+
+  const handleOpenRejectModal = (id: string) => {
+    setSelectedRejectId(id);
+    setRejectReason(rejectionReasons[id] ?? '');
+    setShowRejectModal(true);
+  };
+
+  const handleCloseRejectModal = () => {
+    setShowRejectModal(false);
+    setSelectedRejectId(null);
+    setRejectReason('');
+  };
+
+  const handleSubmitRejectReason = () => {
+    if (!selectedRejectId || !rejectReason.trim()) {
+      return;
+    }
+
+    setRejectionReasons(prev => ({
+      ...prev,
+      [selectedRejectId]: rejectReason.trim(),
+    }));
+
+    handleCloseRejectModal();
+  };
+
+  const isRejectDisabled = !rejectReason.trim();
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -116,7 +175,7 @@ const DashboardAdmin: React.FC = () => {
                 <Feather name="file-text" size={20} color="#FFFFFF" />
               </View>
               <Text style={styles.statValue}>4</Text>
-              <Text style={styles.statLabel}>Verifikasi</Text>
+              <Text style={styles.statLabel}>Selesai</Text>
             </View>
           </View>
         </View>
@@ -192,7 +251,7 @@ const DashboardAdmin: React.FC = () => {
                   activeTab === 'verifikasi' && styles.tabTextActive,
                 ]}
               >
-                Verifikasi
+                Selesai
               </Text>
             </TouchableOpacity>
           </View>
@@ -225,39 +284,6 @@ const DashboardAdmin: React.FC = () => {
               </Text>
 
               <View style={styles.reportFooterRow}>
-                {/* Status pill */}
-                <View
-                  style={[
-                    styles.statusPill,
-                    item.statusType === 'process'
-                      ? styles.statusPillProcess
-                      : styles.statusPillPending,
-                  ]}
-                >
-                  <MaterialCommunityIcons
-                    name={
-                      item.statusType === 'process'
-                        ? 'progress-clock'
-                        : 'clock-outline'
-                    }
-                    size={14}
-                    color={
-                      item.statusType === 'process' ? '#1D4ED8' : '#92400E'
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.statusText,
-                      item.statusType === 'process'
-                        ? styles.statusTextProcess
-                        : styles.statusTextPending,
-                    ]}
-                  >
-                    {item.statusLabel}
-                  </Text>
-                </View>
-
-                {/* Meta row */}
                 <View style={styles.reportMetaRow}>
                   <View style={styles.reportMetaItem}>
                     <Feather name="user" size={12} color="#6B7280" />
@@ -271,22 +297,42 @@ const DashboardAdmin: React.FC = () => {
               </View>
 
               {activeTab === 'pending' && item.statusType === 'pending' && (
-                <View style={styles.actionRow}>
+                item.actionState === 'new' ? (
+                  <View style={styles.actionRow}>
+                    <TouchableOpacity
+                      style={styles.actionButtonVerify}
+                      activeOpacity={0.9}
+                      onPress={() => handleAcceptReport(item.id)}
+                    >
+                      <Text style={styles.actionButtonText}>Terima</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.actionButtonReject}
+                      activeOpacity={0.9}
+                      onPress={() => handleOpenRejectModal(item.id)}
+                    >
+                      <Text style={styles.actionButtonText}>Tolak</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : item.actionState === 'in_progress' ? (
                   <TouchableOpacity
-                    style={styles.actionButtonVerify}
+                    style={styles.actionButtonStart}
                     activeOpacity={0.9}
+                    onPress={() => handleCompleteRepair(item.id)}
+                  >
+                    <Feather name="tool" size={15} color="#FFFFFF" />
+                    <Text style={styles.actionButtonText}>Mulai Perbaikan</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.actionButtonDone}
+                    activeOpacity={0.95}
                     onPress={() => {}}
                   >
-                    <Text style={styles.actionButtonText}>Verifikasi</Text>
+                    <Feather name="check-circle" size={15} color="#FFFFFF" />
+                    <Text style={styles.actionButtonText}>Selesai</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.actionButtonReject}
-                    activeOpacity={0.9}
-                    onPress={() => {}}
-                  >
-                    <Text style={styles.actionButtonText}>Tolak</Text>
-                  </TouchableOpacity>
-                </View>
+                )
               )}
             </View>
           ))}
@@ -294,6 +340,52 @@ const DashboardAdmin: React.FC = () => {
           <View style={{ height: 32 }} />
         </View>
       </ScrollView>
+
+      {showRejectModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Tolak Laporan</Text>
+            <Text style={styles.modalSubtitle}>
+              Masukkan Alasan Penolakan Untuk Pelapor
+            </Text>
+
+            <TextInput
+              style={styles.modalTextArea}
+              multiline
+              numberOfLines={4}
+              value={rejectReason}
+              onChangeText={setRejectReason}
+              placeholder="Tulis alasan penolakan..."
+              placeholderTextColor="#9CA3AF"
+              textAlignVertical="top"
+            />
+
+            <View style={styles.modalActionRow}>
+              <TouchableOpacity
+                style={[
+                  styles.modalRejectButton,
+                  isRejectDisabled && styles.modalRejectButtonDisabled,
+                ]}
+                activeOpacity={0.9}
+                onPress={handleSubmitRejectReason}
+                disabled={isRejectDisabled}
+              >
+                <Feather name="x-circle" size={14} color="#FFFFFF" />
+                <Text style={styles.modalActionText}>Tolak</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                activeOpacity={0.9}
+                onPress={handleCloseRejectModal}
+              >
+                <Feather name="x-circle" size={14} color="#FFFFFF" />
+                <Text style={styles.modalActionText}>batal</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -419,8 +511,8 @@ const styles = StyleSheet.create({
   tabRow: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    borderRadius: 15,
-    padding: 4,
+    borderRadius: 14,
+    padding: 9,
     marginBottom: 16,
     borderWidth: 1,
     borderColor: '#E5E7EB',
@@ -432,7 +524,7 @@ const styles = StyleSheet.create({
   },
   tabItem: {
     flex: 1,
-    borderRadius: 15,
+    borderRadius: 12,
     paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -441,7 +533,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#7C3AED',
   },
   tabText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#111827',
     fontWeight: '500',
     textAlign: 'center',
@@ -498,31 +590,6 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'flex-start',
   },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    marginBottom: 8,
-  },
-  statusPillProcess: {
-    backgroundColor: '#EEF2FF',
-  },
-  statusPillPending: {
-    backgroundColor: '#FEF3C7',
-  },
-  statusText: {
-    marginLeft: 5,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  statusTextProcess: {
-    color: '#1D4ED8',
-  },
-  statusTextPending: {
-    color: '#92400E',
-  },
   reportMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -561,6 +628,101 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  actionButtonStart: {
+    marginTop: 10,
+    backgroundColor: '#2563EB',
+    borderRadius: 8,
+    paddingVertical: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionButtonDone: {
+    marginTop: 10,
+    backgroundColor: '#0FA745',
+    borderRadius: 8,
+    paddingVertical: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(69, 91, 146, 0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+  },
+  modalTitle: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  modalSubtitle: {
+    marginTop: 4,
+    fontSize: 11,
+    color: '#6B7280',
+  },
+  modalTextArea: {
+    marginTop: 10,
+    minHeight: 105,
+    borderWidth: 1.5,
+    borderColor: '#C084FC',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#111827',
+    backgroundColor: '#FFFFFF',
+  },
+  modalActionRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  modalRejectButton: {
+    flex: 1,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  modalRejectButtonDisabled: {
+    backgroundColor: '#EF4444',
+  },
+  modalCancelButton: {
+    flex: 1,
+    backgroundColor: '#EA580C',
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  modalActionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   actionButtonText: {
     fontSize: 13,
     fontWeight: '600',
@@ -569,3 +731,16 @@ const styles = StyleSheet.create({
 });
 
 export default DashboardAdmin;
+
+
+
+
+
+
+
+
+
+
+
+
+
