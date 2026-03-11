@@ -1,6 +1,7 @@
-import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
+import { laporanPelaporMock } from '@/app/data/mockReports';
 import {
   SafeAreaView,
   ScrollView,
@@ -10,42 +11,41 @@ import {
   View,
 } from 'react-native';
 
+type PelaporTab = 'semua' | 'proses' | 'selesai';
+type PelaporStatus = Exclude<PelaporTab, 'semua'>;
+type PelaporIcon = 'monitor' | 'tools';
+type PelaporKategori = 'IT' | 'Non-IT';
+
+interface PelaporLaporan {
+  id: string;
+  title: string;
+  description: string;
+  status: PelaporStatus;
+  icon: PelaporIcon;
+  category: PelaporKategori;
+  date: string;
+  author: string;
+}
+
+const laporanPelapor: PelaporLaporan[] = laporanPelaporMock;
+
 const DashboardPelapor: React.FC = () => {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'semua' | 'proses' | 'selesai'>('semua');
-
-  // Dummy data untuk contoh
-  const laporan = [
-    {
-      id: '1',
-      title: 'GK 2, komputer lab 1, monitor tidak menyala',
-      description:
-        'tadi pagi di jam 10:00 saya masuk kelas, dan pada saat saya mau pakai monitor monitornya tidak bisa menyala',
-      status: 'proses',
-      statusLabel: 'Menunggu',
-      icon: 'monitor',
-      date: '29/01/2026',
-      author: 'Ruben Inkiriwang',
-    },
-    {
-      id: '2',
-      title: 'AC Perpustakaan Bocor',
-      description: 'ac perpustakaan bocor dan air nya keluar terus',
-      status: 'selesai',
-      statusLabel: 'Selesai',
-      icon: 'tools',
-      date: '16/01/2026',
-      author: 'Ruben Inkiriwang',
-    },
-  ];
+  const [activeTab, setActiveTab] = useState<PelaporTab>('semua');
 
   const filteredLaporan = useMemo(() => {
     if (activeTab === 'semua') {
-      return laporan;
+      return laporanPelapor;
     }
 
-    return laporan.filter((item) => item.status === activeTab);
-  }, [activeTab, laporan]);
+    return laporanPelapor.filter((item) => item.status === activeTab);
+  }, [activeTab]);
+
+  const summary = {
+    semua: laporanPelapor.length,
+    proses: laporanPelapor.filter((item) => item.status === 'proses').length,
+    selesai: laporanPelapor.filter((item) => item.status === 'selesai').length,
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -88,21 +88,21 @@ const DashboardPelapor: React.FC = () => {
               <View style={styles.statIconCircle}>
                 <Feather name="file-text" size={20} color="#FFFFFF" />
               </View>
-              <Text style={styles.statValue}>4</Text>
+              <Text style={styles.statValue}>{summary.semua}</Text>
               <Text style={styles.statLabel}>Semua</Text>
             </View>
             <View style={styles.statCard}>
               <View style={styles.statIconCircle}>
                 <Feather name="refresh-cw" size={20} color="#FFFFFF" />
               </View>
-              <Text style={styles.statValue}>3</Text>
-              <Text style={styles.statLabel}>Proses</Text>
+              <Text style={styles.statValue}>{summary.proses}</Text>
+              <Text style={styles.statLabel}>Laporan</Text>
             </View>
             <View style={styles.statCard}>
               <View style={styles.statIconCircle}>
                 <Feather name="check-circle" size={20} color="#FFFFFF" />
               </View>
-              <Text style={styles.statValue}>1</Text>
+              <Text style={styles.statValue}>{summary.selesai}</Text>
               <Text style={styles.statLabel}>Selesai</Text>
             </View>
           </View>
@@ -154,7 +154,7 @@ const DashboardPelapor: React.FC = () => {
                   activeTab === 'proses' && styles.tabTextActive,
                 ]}
               >
-                Proses
+                Laporan
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -202,26 +202,6 @@ const DashboardPelapor: React.FC = () => {
               </Text>
 
               <View style={styles.reportFooterRow}>
-                <View
-                  style={[
-                    styles.statusPill,
-                    item.status === 'selesai' && styles.statusPillDone,
-                  ]}
-                >
-                  <MaterialCommunityIcons
-                    name={item.status === 'selesai' ? 'check-circle-outline' : 'clock-outline'}
-                    size={14}
-                    color={item.status === 'selesai' ? '#166534' : '#92400E'}
-                  />
-                  <Text
-                    style={[
-                      styles.statusText,
-                      item.status === 'selesai' && styles.statusTextDone,
-                    ]}
-                  >
-                    {item.statusLabel}
-                  </Text>
-                </View>
                 <View style={styles.reportMetaRow}>
                   <View style={styles.reportMetaItem}>
                     <Feather name="user" size={12} color="#6B7280" />
@@ -455,29 +435,6 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'flex-start',
   },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#FEF3C7',
-    marginBottom: 8,
-  },
-  statusText: {
-    marginLeft: 5,
-    fontSize: 12,
-    color: '#92400E',
-    fontWeight: '600',
-  },
-  statusPillDone: {
-    backgroundColor: '#DCFCE7',
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-  },
-  statusTextDone: {
-    color: '#166534',
-  },
   reportMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -496,3 +453,5 @@ const styles = StyleSheet.create({
 });
 
 export default DashboardPelapor;
+
+

@@ -36,7 +36,7 @@ const DetailLaporan: React.FC = () => {
           style={styles.backButton}
           onPress={() => router.replace('/(tabs)/Screens/DashboardPelapor')}
         >
-          <Feather name="arrow-left" size={22} color="#111827" />
+          <Feather name="arrow-left" size={28} color="#111827" />
         </TouchableOpacity>
         <View style={styles.headerTextWrap}>
           <Text style={styles.headerTitle}>Detail Laporan</Text>
@@ -143,12 +143,11 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    marginRight: 12,
   },
   headerTextWrap: {
     flex: 1,

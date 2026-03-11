@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
+import { laporanAdminMock } from '@/app/data/mockReports';
 import {
   SafeAreaView,
   ScrollView,
@@ -13,56 +14,20 @@ import {
 } from 'react-native';
 
 type AdminStatus = 'semua' | 'pending' | 'verifikasi';
+type AdminActionState = 'new' | 'accepted' | 'rejected';
 
 interface AdminLaporan {
   id: string;
   title: string;
   description: string;
   status: AdminStatus;
-  statusType: 'process' | 'pending';
   icon: 'monitor' | 'tools';
   date: string;
   author: string;
-  actionState: 'new' | 'in_progress' | 'done';
+  actionState: AdminActionState;
 }
 
-const dataLaporan: AdminLaporan[] = [
-  {
-    id: '1',
-    title: 'GK 1, lt 2, 301 Proyektor  Tidak Menyala',
-    description:
-      'Proyektor di ruang Kuliah 301 tidak dapat menyala sejak pagi ini sudah dicoba berkali-kali namun tetap tidak ada respon',
-    status: 'pending',
-    statusType: 'process',
-    icon: 'monitor',
-    date: '29/01/2026',
-    author: 'Ruben Inkiriwang',
-    actionState: 'new',
-  },
-  {
-    id: '2',
-    title: 'GK 2, komputer lab 1, monitor tidak menyala',
-    description:
-      'tadi pagi di jam 10:00 saya masuk kelas, dan pada saat saya mau pakai monitor monitornya tidak bisa menyala',
-    status: 'pending',
-    statusType: 'pending',
-    icon: 'monitor',
-    date: '16/01/2026',
-    author: 'Ruben Inkiriwang',
-    actionState: 'new',
-  },
-  {
-    id: '3',
-    title: 'AC Perpustakaan Bocor',
-    description: 'ac perpustakaan bocor dan air nya keluar terus',
-    status: 'verifikasi',
-    statusType: 'pending',
-    icon: 'tools',
-    date: '16/01/2026',
-    author: 'Ruben Inkiriwang',
-    actionState: 'new',
-  },
-];
+const dataLaporan: AdminLaporan[] = laporanAdminMock;
 
 const DashboardAdmin: React.FC = () => {
   const router = useRouter();
@@ -73,33 +38,36 @@ const DashboardAdmin: React.FC = () => {
   const [selectedRejectId, setSelectedRejectId] = useState<string | null>(null);
   const [rejectionReasons, setRejectionReasons] = useState<Record<string, string>>({});
 
+  const visibleLaporan = useMemo(
+    () => laporanList.filter((item) => item.actionState !== 'rejected'),
+    [laporanList]
+  );
+
   const filteredLaporan = useMemo(() => {
     if (activeTab === 'semua') {
-      return laporanList;
+      return visibleLaporan;
     }
-    return laporanList.filter(item => item.status === activeTab);
-  }, [activeTab, laporanList]);
+
+    return visibleLaporan.filter((item) => item.status === activeTab);
+  }, [activeTab, visibleLaporan]);
+
+  const summary = useMemo(
+    () => ({
+      semua: visibleLaporan.length,
+      laporan: visibleLaporan.filter((item) => item.status === 'pending').length,
+      selesai: visibleLaporan.filter((item) => item.status === 'verifikasi').length,
+    }),
+    [visibleLaporan]
+  );
 
   const handleAcceptReport = (id: string) => {
-    setLaporanList(prev =>
-      prev.map(item =>
+    setLaporanList((prev) =>
+      prev.map((item) =>
         item.id === id
           ? {
               ...item,
-              actionState: 'in_progress',
-            }
-          : item
-      )
-    );
-  };
-
-  const handleCompleteRepair = (id: string) => {
-    setLaporanList(prev =>
-      prev.map(item =>
-        item.id === id
-          ? {
-              ...item,
-              actionState: 'done',
+              status: 'verifikasi',
+              actionState: 'accepted',
             }
           : item
       )
@@ -123,10 +91,23 @@ const DashboardAdmin: React.FC = () => {
       return;
     }
 
-    setRejectionReasons(prev => ({
+    const cleanedReason = rejectReason.trim();
+
+    setRejectionReasons((prev) => ({
       ...prev,
-      [selectedRejectId]: rejectReason.trim(),
+      [selectedRejectId]: cleanedReason,
     }));
+
+    setLaporanList((prev) =>
+      prev.map((item) =>
+        item.id === selectedRejectId
+          ? {
+              ...item,
+              actionState: 'rejected',
+            }
+          : item
+      )
+    );
 
     handleCloseRejectModal();
   };
@@ -140,49 +121,44 @@ const DashboardAdmin: React.FC = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* HEADER UNGU */}
         <View style={styles.header}>
-          {/* Top row back + title */}
           <View style={styles.headerTopRow}>
             <TouchableOpacity
               style={styles.backButton}
               onPress={() => router.replace('/(tabs)/Screens/LoginScreen')}
             >
-              <Feather name="arrow-left" size={22} color="#FFFFFF" />
+              <Feather name="arrow-left" size={28} color="#FFFFFF" />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Admin Dashboard</Text>
-            <View style={{ width: 32 }} />
+            <Text style={styles.headerTitle}>Admin</Text>
+            <View style={styles.headerSpacer} />
           </View>
 
-          {/* STAT KARTU */}
           <View style={styles.statsRow}>
             <View style={styles.statCard}>
               <View style={styles.statIconCircle}>
-                <Feather name="clock" size={20} color="#FFFFFF" />
+                <Feather name="file-text" size={20} color="#FFFFFF" />
               </View>
-              <Text style={styles.statValue}>1</Text>
+              <Text style={styles.statValue}>{summary.semua}</Text>
               <Text style={styles.statLabel}>Semua</Text>
+            </View>
+            <View style={styles.statCard}>
+              <View style={styles.statIconCircle}>
+                <Feather name="refresh-cw" size={20} color="#FFFFFF" />
+              </View>
+              <Text style={styles.statValue}>{summary.laporan}</Text>
+              <Text style={styles.statLabel}>Laporan</Text>
             </View>
             <View style={styles.statCard}>
               <View style={styles.statIconCircle}>
                 <Feather name="check-circle" size={20} color="#FFFFFF" />
               </View>
-              <Text style={styles.statValue}>1</Text>
-              <Text style={styles.statLabel}>Laporan</Text>
-            </View>
-            <View style={styles.statCard}>
-              <View style={styles.statIconCircle}>
-                <Feather name="file-text" size={20} color="#FFFFFF" />
-              </View>
-              <Text style={styles.statValue}>4</Text>
+              <Text style={styles.statValue}>{summary.selesai}</Text>
               <Text style={styles.statLabel}>Selesai</Text>
             </View>
           </View>
         </View>
 
-        {/* KONTEN PUTIH */}
         <View style={styles.content}>
-          {/* KELOLA USER */}
           <View style={styles.manageUserWrapper}>
             <TouchableOpacity
               style={styles.manageUserCard}
@@ -195,76 +171,42 @@ const DashboardAdmin: React.FC = () => {
                 </View>
                 <View>
                   <Text style={styles.manageUserTitle}>Kelola User</Text>
-                  <Text style={styles.manageUserSubtitle}>
-                    Tambah atau hapus user
-                  </Text>
+                  <Text style={styles.manageUserSubtitle}>Tambah atau hapus user</Text>
                 </View>
               </View>
               <Feather name="chevron-right" size={20} color="#9CA3AF" />
             </TouchableOpacity>
           </View>
 
-          {/* TAB */}
           <View style={styles.tabRow}>
             <TouchableOpacity
-              style={[
-                styles.tabItem,
-                activeTab === 'semua' && styles.tabItemActive,
-              ]}
+              style={[styles.tabItem, activeTab === 'semua' && styles.tabItemActive]}
               onPress={() => setActiveTab('semua')}
             >
-              <Text
-                style={[
-                  styles.tabText,
-                  activeTab === 'semua' && styles.tabTextActive,
-                ]}
-              >
+              <Text style={[styles.tabText, activeTab === 'semua' && styles.tabTextActive]}>
                 Semua
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[
-                styles.tabItem,
-                activeTab === 'pending' && styles.tabItemActive,
-              ]}
+              style={[styles.tabItem, activeTab === 'pending' && styles.tabItemActive]}
               onPress={() => setActiveTab('pending')}
             >
-              <Text
-                style={[
-                  styles.tabText,
-                  activeTab === 'pending' && styles.tabTextActive,
-                ]}
-              >
-                Laporan Baru
+              <Text style={[styles.tabText, activeTab === 'pending' && styles.tabTextActive]}>
+                Laporan
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[
-                styles.tabItem,
-                activeTab === 'verifikasi' && styles.tabItemActive,
-              ]}
+              style={[styles.tabItem, activeTab === 'verifikasi' && styles.tabItemActive]}
               onPress={() => setActiveTab('verifikasi')}
             >
-              <Text
-                style={[
-                  styles.tabText,
-                  activeTab === 'verifikasi' && styles.tabTextActive,
-                ]}
-              >
+              <Text style={[styles.tabText, activeTab === 'verifikasi' && styles.tabTextActive]}>
                 Selesai
               </Text>
             </TouchableOpacity>
           </View>
 
-          {/* LIST LAPORAN */}
           {filteredLaporan.map((item, index) => (
-            <View
-              key={item.id}
-              style={[
-                styles.reportCard,
-                index > 0 && { marginTop: 12 },
-              ]}
-            >
+            <View key={item.id} style={[styles.reportCard, index > 0 && styles.reportCardSpacing]}>
               <View style={styles.reportHeaderRow}>
                 <View style={styles.reportTitleRow}>
                   <View style={styles.reportIconCircle}>
@@ -296,48 +238,30 @@ const DashboardAdmin: React.FC = () => {
                 </View>
               </View>
 
-              {activeTab === 'pending' && item.statusType === 'pending' && (
-                item.actionState === 'new' ? (
-                  <View style={styles.actionRow}>
-                    <TouchableOpacity
-                      style={styles.actionButtonVerify}
-                      activeOpacity={0.9}
-                      onPress={() => handleAcceptReport(item.id)}
-                    >
-                      <Text style={styles.actionButtonText}>Terima</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.actionButtonReject}
-                      activeOpacity={0.9}
-                      onPress={() => handleOpenRejectModal(item.id)}
-                    >
-                      <Text style={styles.actionButtonText}>Tolak</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : item.actionState === 'in_progress' ? (
+              {activeTab === 'pending' && item.actionState === 'new' && (
+                <View style={styles.actionRow}>
                   <TouchableOpacity
-                    style={styles.actionButtonStart}
+                    style={styles.actionButtonVerify}
                     activeOpacity={0.9}
-                    onPress={() => handleCompleteRepair(item.id)}
+                    onPress={() => handleAcceptReport(item.id)}
                   >
-                    <Feather name="tool" size={15} color="#FFFFFF" />
-                    <Text style={styles.actionButtonText}>Mulai Perbaikan</Text>
+                    <Feather name="check-circle" size={14} color="#FFFFFF" />
+                    <Text style={styles.actionButtonText}>Terima</Text>
                   </TouchableOpacity>
-                ) : (
                   <TouchableOpacity
-                    style={styles.actionButtonDone}
-                    activeOpacity={0.95}
-                    onPress={() => {}}
+                    style={styles.actionButtonReject}
+                    activeOpacity={0.9}
+                    onPress={() => handleOpenRejectModal(item.id)}
                   >
-                    <Feather name="check-circle" size={15} color="#FFFFFF" />
-                    <Text style={styles.actionButtonText}>Selesai</Text>
+                    <Feather name="x-circle" size={14} color="#FFFFFF" />
+                    <Text style={styles.actionButtonText}>Tolak</Text>
                   </TouchableOpacity>
-                )
+                </View>
               )}
             </View>
           ))}
 
-          <View style={{ height: 32 }} />
+          <View style={styles.bottomSpacer} />
         </View>
       </ScrollView>
 
@@ -380,7 +304,7 @@ const DashboardAdmin: React.FC = () => {
                 onPress={handleCloseRejectModal}
               >
                 <Feather name="x-circle" size={14} color="#FFFFFF" />
-                <Text style={styles.modalActionText}>batal</Text>
+                <Text style={styles.modalActionText}>Batal</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -412,10 +336,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   backButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#A855F7',
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -425,6 +347,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  headerSpacer: {
+    width: 40,
   },
   statsRow: {
     flexDirection: 'row',
@@ -511,8 +436,8 @@ const styles = StyleSheet.create({
   tabRow: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 9,
+    borderRadius: 15,
+    padding: 4,
     marginBottom: 16,
     borderWidth: 1,
     borderColor: '#E5E7EB',
@@ -524,8 +449,8 @@ const styles = StyleSheet.create({
   },
   tabItem: {
     flex: 1,
-    borderRadius: 12,
-    paddingVertical: 8,
+    borderRadius: 15,
+    paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -533,7 +458,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#7C3AED',
   },
   tabText: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#111827',
     fontWeight: '500',
     textAlign: 'center',
@@ -552,6 +477,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 3,
+  },
+  reportCardSpacing: {
+    marginTop: 12,
   },
   reportHeaderRow: {
     flexDirection: 'row',
@@ -619,6 +547,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
   },
   actionButtonReject: {
     flex: 1,
@@ -627,26 +557,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  actionButtonStart: {
-    marginTop: 10,
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    paddingVertical: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
   },
-  actionButtonDone: {
-    marginTop: 10,
-    backgroundColor: '#0FA745',
-    borderRadius: 8,
-    paddingVertical: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
+  actionButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   modalOverlay: {
     position: 'absolute',
@@ -723,23 +640,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  actionButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FFFFFF',
+  bottomSpacer: {
+    height: 32,
   },
 });
 
 export default DashboardAdmin;
-
-
-
-
-
-
-
-
-
 
 
 
