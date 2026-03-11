@@ -97,10 +97,10 @@ const KelolaUserScreen: React.FC = () => {
           style={styles.backButton}
           onPress={() => router.replace('/(tabs)/Screens/DashboardAdmin')}
         >
-          <Feather name="arrow-left" size={22} color="#FFFFFF" />
+          <Feather name="arrow-left" size={28} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Kelola User</Text>
-        <View style={{ width: 32 }} />
+        <View style={{ width: 40 }} />
       </View>
 
       <ScrollView
@@ -328,10 +328,8 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 60,
   },
   backButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#A855F7',
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -625,6 +623,4 @@ const styles = StyleSheet.create({
 });
 
 export default KelolaUserScreen;
-
-
 

@@ -56,7 +56,7 @@ const FormLaporan: React.FC = () => {
               style={styles.backButton}
               onPress={() => router.replace('/(tabs)/Screens/DashboardPelapor')}
             >
-              <Feather name="arrow-left" size={24} color="#111827" />
+              <Feather name="arrow-left" size={28} color="#111827" />
             </TouchableOpacity>
             <Text style={styles.title}>Buat Laporan Baru</Text>
             <Text style={styles.subtitle}>
@@ -227,7 +227,12 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   backButton: {
-    marginBottom: 16,
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    marginLeft: -4,
   },
   title: {
     fontSize: SCREEN_WIDTH < 360 ? 20 : 22,
@@ -369,3 +374,4 @@ const styles = StyleSheet.create({
 });
 
 export default FormLaporan;
+

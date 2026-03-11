@@ -89,7 +89,7 @@ const NotifikasiScreen: React.FC = () => {
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Feather name="arrow-left" size={22} color="#111827" />
+          <Feather name="arrow-left" size={28} color="#111827" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Notifikasi</Text>
@@ -164,11 +164,11 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E5E7EB',
   },
   backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: -4,
   },
   headerCenter: {
     flex: 1,
