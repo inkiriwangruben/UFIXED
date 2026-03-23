@@ -1,12 +1,14 @@
 export type ReportCategory = 'IT' | 'Non-IT';
 export type ReportIcon = 'monitor' | 'tools';
 export type PelaporStatus = 'proses' | 'selesai';
+export type Priority = 'low' | 'medium' | 'high' | 'critical';
 
 export interface MockPelaporReport {
   id: string;
   title: string;
   description: string;
   status: PelaporStatus;
+  priority: Priority;
   icon: ReportIcon;
   category: ReportCategory;
   date: string;
@@ -18,6 +20,7 @@ export interface MockAdminReport {
   title: string;
   description: string;
   status: 'pending' | 'verifikasi';
+  priority: Priority;
   icon: ReportIcon;
   date: string;
   author: string;
@@ -29,6 +32,7 @@ export interface MockDepartmentITReport {
   title: string;
   description: string;
   tabStatus: 'proses' | 'selesai';
+  priority: Priority;
   icon: 'monitor';
   date: string;
   author: string;
@@ -40,6 +44,7 @@ export interface MockTukangReport {
   title: string;
   description: string;
   tabStatus: 'proses' | 'selesai';
+  priority: Priority;
   icon: 'tools';
   date: string;
   author: string;
@@ -51,6 +56,7 @@ export interface MockBusinessOfficeReport {
   title: string;
   description: string;
   tabStatus: 'approved' | 'selesai';
+  priority: Priority;
   icon: ReportIcon;
   date: string;
   author: string;
@@ -64,6 +70,7 @@ export const laporanPelaporMock: MockPelaporReport[] = [
     description:
       'tadi pagi di jam 10:00 saya masuk kelas, dan pada saat saya mau pakai monitor monitornya tidak bisa menyala',
     status: 'proses',
+    priority: 'medium',
     icon: 'monitor',
     category: 'IT',
     date: '29/01/2026',
@@ -74,6 +81,7 @@ export const laporanPelaporMock: MockPelaporReport[] = [
     title: 'AC Perpustakaan Bocor',
     description: 'ac perpustakaan bocor dan air nya keluar terus',
     status: 'selesai',
+    priority: 'high',
     icon: 'tools',
     category: 'Non-IT',
     date: '16/01/2026',
@@ -85,6 +93,7 @@ export const laporanPelaporMock: MockPelaporReport[] = [
     description:
       'layar LCD di ruang 204 menyala tetapi tidak menampilkan output dari laptop walaupun kabel HDMI sudah diganti',
     status: 'proses',
+    priority: 'high',
     icon: 'monitor',
     category: 'IT',
     date: '04/03/2026',
@@ -96,6 +105,7 @@ export const laporanPelaporMock: MockPelaporReport[] = [
     description:
       'pintu toilet di lantai 2 seret saat ditutup dan kuncinya tidak bisa berfungsi dengan baik sejak kemarin sore',
     status: 'proses',
+    priority: 'low',
     icon: 'tools',
     category: 'Non-IT',
     date: '07/03/2026',
@@ -108,6 +118,7 @@ export const laporanAdminMock: MockAdminReport[] = laporanPelaporMock.map((item)
   title: item.title,
   description: item.description,
   status: item.status === 'selesai' ? 'verifikasi' : 'pending',
+  priority: item.priority,
   icon: item.icon,
   date: item.date,
   author: item.author,
@@ -121,6 +132,7 @@ export const laporanDepartmentITMock: MockDepartmentITReport[] = laporanPelaporM
     title: item.title,
     description: item.description,
     tabStatus: item.status,
+    priority: item.priority,
     icon: 'monitor',
     date: item.date,
     author: item.author,
@@ -134,6 +146,7 @@ export const laporanTukangMock: MockTukangReport[] = laporanPelaporMock
     title: item.title,
     description: item.description,
     tabStatus: item.status,
+    priority: item.priority,
     icon: 'tools',
     date: item.date,
     author: item.author,
@@ -146,6 +159,7 @@ export const laporanBusinessOfficeMock: MockBusinessOfficeReport[] = laporanPela
     title: item.title,
     description: item.description,
     tabStatus: item.status === 'selesai' ? 'selesai' : 'approved',
+    priority: item.priority,
     icon: item.icon,
     date: item.date,
     author: item.author,

@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native';
 
-type UserRole = 'Department IT' | 'Tukang' | 'Business Office';
+type UserRole = 'Department IT' | 'Tukang' | 'Business Office' | 'Pelapor';
 
 interface UserItem {
   id: string;
@@ -22,18 +22,23 @@ interface UserItem {
   role: UserRole;
 }
 
-const roleOptions: UserRole[] = ['Department IT', 'Tukang', 'Business Office'];
+const roleOptions: UserRole[] = [
+  'Pelapor',
+  'Department IT',
+  'Tukang',
+  'Business Office',
+];
 
 const initialUsers: UserItem[] = [
   {
     id: '1',
-    name: 'IT Support',
+    name: 'Department IT',
     email: 'it@unklab.ac.id',
     role: 'Department IT',
   },
   {
     id: '2',
-    name: 'Tukang Kampus',
+    name: 'Tukang',
     email: 'tukang@unklab.ac.id',
     role: 'Tukang',
   },
@@ -43,6 +48,12 @@ const initialUsers: UserItem[] = [
     email: 'bo@unklab.ac.id',
     role: 'Business Office',
   },
+  {
+    id: '4',
+    name: 'Pelapor',
+    email: 's22210208@unklab.ac.id',
+    role: 'Pelapor',
+  },
 ];
 
 const getRoleStyle = (role: UserRole) => {
@@ -51,6 +62,8 @@ const getRoleStyle = (role: UserRole) => {
       return { bg: '#DBEAFE', text: '#1D4ED8' };
     case 'Tukang':
       return { bg: '#FEF3C7', text: '#92400E' };
+    case 'Pelapor':
+      return { bg: '#F3E8FF', text: '#7E22CE' };
     case 'Business Office':
     default:
       return { bg: '#DCFCE7', text: '#166534' };
@@ -67,6 +80,14 @@ const KelolaUserScreen: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<string>('');
   const [showRoleMenu, setShowRoleMenu] = useState(false);
+
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/Screens/DashboardAdmin');
+    }
+  };
 
   const handleOpenDeleteModal = (user: UserItem) => {
     setSelectedUser(user);
@@ -95,7 +116,7 @@ const KelolaUserScreen: React.FC = () => {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.replace('/(tabs)/Screens/DashboardAdmin')}
+          onPress={handleBack}
         >
           <Feather name="arrow-left" size={28} color="#FFFFFF" />
         </TouchableOpacity>
@@ -141,18 +162,6 @@ const KelolaUserScreen: React.FC = () => {
                       style={{ marginRight: 4 }}
                     />
                     <Text style={styles.userEmail}>{user.email}</Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.roleBadge,
-                      { backgroundColor: roleStyle.bg },
-                    ]}
-                  >
-                    <Text
-                      style={[styles.roleBadgeText, { color: roleStyle.text }]}
-                    >
-                      {user.role}
-                    </Text>
                   </View>
                 </View>
               </View>

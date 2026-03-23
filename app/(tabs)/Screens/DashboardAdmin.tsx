@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { laporanAdminMock } from '@/app/data/mockReports';
+import { formatPriorityLabel } from '@/app/utils/priority';
 import {
   SafeAreaView,
   ScrollView,
@@ -21,6 +22,7 @@ interface AdminLaporan {
   title: string;
   description: string;
   status: AdminStatus;
+  priority: string;
   icon: 'monitor' | 'tools';
   date: string;
   author: string;
@@ -206,7 +208,30 @@ const DashboardAdmin: React.FC = () => {
           </View>
 
           {filteredLaporan.map((item, index) => (
-            <View key={item.id} style={[styles.reportCard, index > 0 && styles.reportCardSpacing]}>
+            <TouchableOpacity 
+              key={item.id} 
+              style={[styles.reportCard, index > 0 && styles.reportCardSpacing]}
+              activeOpacity={0.9}
+              onPress={() => 
+                router.push({
+                  pathname: '/(tabs)/Screens/DetailLaporan',
+                  params: {
+                    id: item.id,
+                    title: item.title,
+                    description: item.description,
+                    status: item.status,
+                    icon: item.icon,
+                    category: item.icon === 'monitor' ? 'IT' : 'Non-IT',
+                    date: item.date,
+                    author: item.author,
+                    priority: item.priority,
+                    actionState: item.actionState,
+                    workflowSource: 'admin',
+                    returnPath: '/(tabs)/Screens/DashboardAdmin'
+                  }
+                })
+              }
+            >
               <View style={styles.reportHeaderRow}>
                 <View style={styles.reportTitleRow}>
                   <View style={styles.reportIconCircle}>
@@ -216,7 +241,7 @@ const DashboardAdmin: React.FC = () => {
                       <Feather name="tool" size={16} color="#F97316" />
                     )}
                   </View>
-                  <Text style={styles.reportTitle}>{item.title}</Text>
+                  <Text style={styles.reportTitle} numberOfLines={1}>{item.title}</Text>
                 </View>
                 <Feather name="chevron-right" size={18} color="#9CA3AF" />
               </View>
@@ -227,13 +252,41 @@ const DashboardAdmin: React.FC = () => {
 
               <View style={styles.reportFooterRow}>
                 <View style={styles.reportMetaRow}>
-                  <View style={styles.reportMetaItem}>
-                    <Feather name="user" size={12} color="#6B7280" />
-                    <Text style={styles.reportMetaText}>{item.author}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={styles.reportMetaItem}>
+                      <Feather name="user" size={12} color="#6B7280" />
+                      <Text style={styles.reportMetaText}>{item.author}</Text>
+                    </View>
+                    <View style={styles.reportMetaItem}>
+                      <Feather name="calendar" size={12} color="#6B7280" />
+                      <Text style={styles.reportMetaText}>{item.date}</Text>
+                    </View>
                   </View>
-                  <View style={styles.reportMetaItem}>
-                    <Feather name="calendar" size={12} color="#6B7280" />
-                    <Text style={styles.reportMetaText}>{item.date}</Text>
+                  
+                  <View style={[
+                    styles.priorityBadge, 
+                    { 
+                      backgroundColor: 
+                        item.priority === 'critical' ? '#FEF2F2' : 
+                        item.priority === 'high' ? '#FFF7ED' : 
+                        item.priority === 'medium' ? '#EFF6FF' : '#F0FDF4',
+                      borderColor: 
+                        item.priority === 'critical' ? '#EF4444' : 
+                        item.priority === 'high' ? '#F97316' : 
+                        item.priority === 'medium' ? '#3B82F6' : '#22C55E'
+                    }
+                  ]}>
+                    <Text style={[
+                    styles.priorityBadgeText,
+                      {
+                        color: 
+                          item.priority === 'critical' ? '#B91C1C' : 
+                          item.priority === 'high' ? '#C2410C' : 
+                          item.priority === 'medium' ? '#1D4ED8' : '#15803D'
+                      }
+                    ]}>
+                      {formatPriorityLabel(item.priority)}
+                    </Text>
                   </View>
                 </View>
               </View>
@@ -258,7 +311,7 @@ const DashboardAdmin: React.FC = () => {
                   </TouchableOpacity>
                 </View>
               )}
-            </View>
+            </TouchableOpacity>
           ))}
 
           <View style={styles.bottomSpacer} />
@@ -508,6 +561,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#111827',
   },
+  priorityBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    marginLeft: 8,
+  },
+  priorityBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
   reportDescription: {
     fontSize: 13,
     lineHeight: 20,
@@ -646,7 +711,5 @@ const styles = StyleSheet.create({
 });
 
 export default DashboardAdmin;
-
-
 
 
