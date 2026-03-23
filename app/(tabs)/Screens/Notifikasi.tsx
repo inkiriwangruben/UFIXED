@@ -63,6 +63,14 @@ const dataNotifikasi: NotifikasiItem[] = [
 const NotifikasiScreen: React.FC = () => {
   const router = useRouter();
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/Screens/LoginScreen');
+    }
+  };
+
   const jumlahBaru = 2;
 
   const getStatusStyle = (status: NotifStatus) => {
@@ -88,7 +96,7 @@ const NotifikasiScreen: React.FC = () => {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Feather name="arrow-left" size={28} color="#111827" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
