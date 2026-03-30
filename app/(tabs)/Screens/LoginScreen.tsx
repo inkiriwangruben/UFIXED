@@ -1,6 +1,10 @@
-import { Feather } from '@expo/vector-icons';
-import { Image } from 'expo-image';
-import React, { useState } from 'react';
+import { Feather } from "@expo/vector-icons";
+import { Image } from "expo-image";
+import React, { useCallback, useEffect, useState } from "react";
+import { useRouter } from "expo-router";
+import { signInWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 import {
   Alert,
   SafeAreaView,
@@ -10,28 +14,132 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
+} from "react-native";
 
 const LoginScreen: React.FC = () => {
   type RoleOption =
-    | 'Pelapor (Mahasiswa/Dosen/Staf)'
-    | 'Admin'
-    | 'Department IT'
-    | 'Tukang'
-    | 'Bussines Office';
+    | "Pelapor (Mahasiswa/Dosen/Staf)"
+    | "Admin"
+    | "Department IT"
+    | "Tukang"
+    | "Business Office";
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [selectedRole, setSelectedRole] =
-    useState<RoleOption>('Pelapor (Mahasiswa/Dosen/Staf)');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [selectedRole, setSelectedRole] = useState<RoleOption>(
+    "Pelapor (Mahasiswa/Dosen/Staf)",
+  );
   const [roleModalVisible, setRoleModalVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
-    Alert.alert('Login', 'Fitur login belum diimplementasikan.');
+  const router = useRouter();
+
+  const getUserRoleAndRedirect = useCallback(
+    async (uid: string, userEmail?: string) => {
+      try {
+        console.log("Getting user role for UID:", uid, "Email:", userEmail);
+
+        // Special case for admin - check if email contains 'admin' or is a known admin email
+        if (
+          userEmail &&
+          (userEmail.toLowerCase().includes("admin") ||
+            userEmail === "admin@university.ac.id")
+        ) {
+          console.log("Admin user detected, redirecting to DashboardAdmin");
+          router.replace("/(tabs)/Screens/DashboardAdmin");
+          return;
+        }
+
+        // First try to find by UID
+        let q = query(collection(db, "users"), where("uid", "==", uid));
+        let querySnapshot = await getDocs(q);
+
+        // If not found by UID, try by email (for legacy users)
+        if (querySnapshot.empty && userEmail) {
+          console.log("User not found by UID, trying by email");
+          q = query(collection(db, "users"), where("email", "==", userEmail));
+          querySnapshot = await getDocs(q);
+        }
+
+        console.log("Query snapshot size:", querySnapshot.size);
+
+        if (!querySnapshot.empty) {
+          const userData = querySnapshot.docs[0].data();
+          const role = userData.role;
+          console.log("User role found:", role);
+
+          switch (role) {
+            case "Pelapor":
+              router.replace("/(tabs)/Screens/DashboardPelapor");
+              break;
+            case "Admin":
+              router.replace("/(tabs)/Screens/DashboardAdmin");
+              break;
+            case "Department IT":
+              router.replace("/(tabs)/Screens/DashboardDepartmentIT");
+              break;
+            case "Tukang":
+              router.replace("/(tabs)/Screens/DashboardTukang");
+              break;
+            case "Business Office":
+              router.replace("/(tabs)/Screens/DashboardBusinessOffice");
+              break;
+            default:
+              router.replace("/(tabs)/Screens/DashboardPelapor");
+              break;
+          }
+        } else {
+          router.replace("/(tabs)/Screens/DashboardPelapor");
+        }
+      } catch (error) {
+        console.error("Error getting user role:", error);
+        Alert.alert("Error", "Gagal mendapatkan data pengguna");
+        router.replace("/(tabs)/Screens/LoginScreen");
+      }
+    },
+    [router],
+  );
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        getUserRoleAndRedirect(user.uid, user.email || undefined);
+      }
+    });
+
+    return unsubscribe;
+  }, [getUserRoleAndRedirect]);
+
+  const handleLogin = async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Error", "Email dan password wajib diisi");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email.trim(),
+        password,
+      );
+      Alert.alert("Berhasil", "Login berhasil");
+      // Redirect will be handled by onAuthStateChanged, but let's also call it here for immediate effect
+      getUserRoleAndRedirect(
+        userCredential.user.uid,
+        userCredential.user.email || undefined,
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Login gagal. Coba lagi.";
+      Alert.alert("Login gagal", message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSelectRole = () => {
-    setRoleModalVisible(prev => !prev);
+    setRoleModalVisible((prev) => !prev);
   };
 
   return (
@@ -45,7 +153,7 @@ const LoginScreen: React.FC = () => {
           <View style={styles.header}>
             <View style={styles.logoCircle}>
               <Image
-                source={require('@/assets/images/wrench.png')}
+                source={require("@/assets/images/wrench.png")}
                 style={styles.logoImage}
               />
             </View>
@@ -59,7 +167,10 @@ const LoginScreen: React.FC = () => {
               <View style={styles.rolePickerWrapper}>
                 <TouchableOpacity
                   activeOpacity={0.8}
-                  style={[styles.rolePicker, roleModalVisible && styles.rolePickerActive]}
+                  style={[
+                    styles.rolePicker,
+                    roleModalVisible && styles.rolePickerActive,
+                  ]}
                   onPress={handleSelectRole}
                 >
                   <Text style={styles.roleText}>{selectedRole}</Text>
@@ -74,19 +185,22 @@ const LoginScreen: React.FC = () => {
                     >
                       {(
                         [
-                          'Pelapor (Mahasiswa/Dosen/Staf)',
-                          'Admin',
-                          'Department IT',
-                          'Tukang',
-                          'Bussines Office',
+                          "Pelapor (Mahasiswa/Dosen/Staf)",
+                          "Admin",
+                          "Department IT",
+                          "Tukang",
+                          "Business Office",
                         ] as RoleOption[]
-                      ).map(role => {
+                      ).map((role) => {
                         const isActive = role === selectedRole;
                         return (
                           <TouchableOpacity
                             key={role}
                             activeOpacity={0.8}
-                            style={[styles.roleOptionRow, isActive && styles.roleOptionRowActive]}
+                            style={[
+                              styles.roleOptionRow,
+                              isActive && styles.roleOptionRowActive,
+                            ]}
                             onPress={() => {
                               setSelectedRole(role);
                               setRoleModalVisible(false);
@@ -146,10 +260,13 @@ const LoginScreen: React.FC = () => {
 
             <TouchableOpacity
               activeOpacity={0.9}
-              style={styles.button}
+              style={[styles.button, loading && styles.buttonDisabled]}
               onPress={handleLogin}
+              disabled={loading}
             >
-              <Text style={styles.buttonText}>Masuk</Text>
+              <Text style={styles.buttonText}>
+                {loading ? "Memuat..." : "Masuk"}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -161,82 +278,82 @@ const LoginScreen: React.FC = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#E9F3FF',
+    backgroundColor: "#E9F3FF",
   },
   scrollContent: {
     flexGrow: 1,
   },
   container: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: "center",
     paddingTop: 56,
     paddingBottom: 40,
   },
   header: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 32,
   },
   logoCircle: {
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: '#1E5BFF',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#1E5BFF",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 20,
   },
   logoImage: {
     width: 56,
     height: 56,
-    resizeMode: 'contain',
+    resizeMode: "contain",
   },
   roleDropdown: {
-    position: 'absolute',
+    position: "absolute",
     top: 52,
     left: 0,
     right: 0,
     zIndex: 1000,
     maxHeight: 210,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: "#D1D5DB",
     borderRadius: 6,
-    backgroundColor: '#FFFFFF',
-    overflow: 'hidden',
+    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
     elevation: 12,
   },
   roleOptionRow: {
     paddingVertical: 10,
     paddingHorizontal: 10,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
   },
   roleOptionRowActive: {
-    backgroundColor: '#1E5BFF',
+    backgroundColor: "#1E5BFF",
   },
   roleOptionText: {
     fontSize: 14,
-    color: '#111827',
+    color: "#111827",
   },
   roleOptionTextActive: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
   title: {
     fontSize: 26,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 1,
-    color: '#1D4ED8',
+    color: "#1D4ED8",
   },
   subtitle: {
     marginTop: 6,
     fontSize: 14,
-    color: '#6B7280',
+    color: "#6B7280",
   },
   card: {
-    width: '88%',
-    backgroundColor: '#FFFFFF',
+    width: "88%",
+    backgroundColor: "#FFFFFF",
     borderRadius: 24,
     paddingHorizontal: 22,
     paddingVertical: 24,
-    shadowColor: '#000000',
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.08,
     shadowRadius: 18,
@@ -247,84 +364,86 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
+    fontWeight: "600",
+    color: "#111827",
     marginBottom: 8,
   },
   rolePicker: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#F8FAFF',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#F8FAFF",
     borderRadius: 20,
     paddingHorizontal: 16,
     height: 48,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: "#E5E7EB",
   },
   rolePickerWrapper: {
-    position: 'relative',
+    position: "relative",
     zIndex: 1000,
   },
   rolePickerActive: {
-    borderColor: '#1E5BFF',
+    borderColor: "#1E5BFF",
   },
   roleText: {
     fontSize: 14,
-    color: '#4B5563',
+    color: "#4B5563",
   },
   inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     height: 48,
     borderRadius: 20,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: "#F3F4F6",
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: "#E5E7EB",
     paddingHorizontal: 12,
   },
   iconBox: {
     width: 32,
     height: 32,
     borderRadius: 10,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 10,
   },
   iconCircle: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 10,
   },
   input: {
     flex: 1,
     fontSize: 14,
-    color: '#111827',
+    color: "#111827",
   },
   button: {
     marginTop: 8,
     height: 52,
     borderRadius: 999,
-    backgroundColor: '#1E5BFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#1E5BFF',
+    backgroundColor: "#1E5BFF",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#1E5BFF",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.35,
     shadowRadius: 12,
     elevation: 8,
   },
+  buttonDisabled: {
+    backgroundColor: "#A5B4FC",
+  },
   buttonText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
 });
 
 export default LoginScreen;
-
