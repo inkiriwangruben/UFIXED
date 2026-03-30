@@ -1,0 +1,163 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function email() {
+      return signedIn() && request.auth.token.email != null
+        ? request.auth.token.email.lower()
+        : '';
+    }
+
+    function isAdmin() {
+      return signedIn() && email().matches('.*admin.*');
+    }
+
+    function isDepartmentIT() {
+      return signedIn() &&
+        (email() == 'it@unklab.ac.id' || email().matches('.*department.*it.*'));
+    }
+
+    function isTukang() {
+      return signedIn() && email().matches('.*tukang.*');
+    }
+
+    function isBusinessOffice() {
+      return signedIn() &&
+        (email() == 'bo@unklab.ac.id' || email().matches('.*business.*office.*'));
+    }
+
+    function isPelapor() {
+      return signedIn() &&
+        !isAdmin() &&
+        !isDepartmentIT() &&
+        !isTukang() &&
+        !isBusinessOffice();
+    }
+
+    function immutableReportFieldsUnchanged() {
+      return request.resource.data.authorUid == resource.data.authorUid &&
+        request.resource.data.authorEmail == resource.data.authorEmail &&
+        request.resource.data.author == resource.data.author &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.judul == resource.data.judul &&
+        request.resource.data.deskripsi == resource.data.deskripsi &&
+        request.resource.data.kategori == resource.data.kategori &&
+        request.resource.data.priority == resource.data.priority &&
+        request.resource.data.unitTarget == resource.data.unitTarget;
+    }
+
+    function validInitialWorkflow() {
+      return request.resource.data.status == 'menunggu' &&
+        request.resource.data.workflowStage == 'admin_review' &&
+        request.resource.data.workflowState == 'submitted' &&
+        (
+          (request.resource.data.kategori == 'IT' &&
+            request.resource.data.unitTarget == 'department-it') ||
+          (request.resource.data.kategori == 'Non-IT' &&
+            request.resource.data.unitTarget == 'tukang')
+        );
+    }
+
+    function adminApprove() {
+      return resource.data.workflowStage == 'admin_review' &&
+        request.resource.data.workflowStage == 'unit_review' &&
+        request.resource.data.workflowState == 'admin_approved' &&
+        request.resource.data.status == 'diproses';
+    }
+
+    function rejectFromCurrentStage(roleName) {
+      return resource.data.workflowStage in [
+          'admin_review',
+          'unit_review',
+          'business_office_review'
+        ] &&
+        request.resource.data.workflowStage == 'rejected' &&
+        request.resource.data.workflowState == 'rejected' &&
+        request.resource.data.status == 'ditolak' &&
+        request.resource.data.rejectedByRole == roleName &&
+        request.resource.data.rejectionReason is string &&
+        request.resource.data.rejectionReason.size() > 0;
+    }
+
+    function unitApprove(expectedTarget) {
+      return resource.data.unitTarget == expectedTarget &&
+        resource.data.workflowStage == 'unit_review' &&
+        request.resource.data.workflowStage == 'business_office_review' &&
+        request.resource.data.workflowState == 'unit_approved' &&
+        request.resource.data.status == resource.data.status;
+    }
+
+    function boApprove() {
+      return resource.data.workflowStage == 'business_office_review' &&
+        request.resource.data.workflowStage == 'unit_repair' &&
+        request.resource.data.workflowState == 'bo_approved' &&
+        request.resource.data.status == resource.data.status;
+    }
+
+    function unitStartRepair(expectedTarget) {
+      return resource.data.unitTarget == expectedTarget &&
+        resource.data.workflowStage == 'unit_repair' &&
+        resource.data.workflowState == 'bo_approved' &&
+        request.resource.data.workflowStage == 'unit_repair' &&
+        request.resource.data.workflowState == 'repairing' &&
+        request.resource.data.status == resource.data.status;
+    }
+
+    function unitComplete(expectedTarget) {
+      return resource.data.unitTarget == expectedTarget &&
+        resource.data.workflowStage == 'unit_repair' &&
+        resource.data.workflowState == 'repairing' &&
+        request.resource.data.workflowStage == 'done' &&
+        request.resource.data.workflowState == 'completed' &&
+        request.resource.data.status == 'selesai';
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /laporan/{reportId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn() &&
+        request.resource.data.authorUid == request.auth.uid &&
+        validInitialWorkflow();
+
+      allow update: if signedIn() &&
+        immutableReportFieldsUnchanged() &&
+        (
+          (isAdmin() &&
+            (
+              adminApprove() ||
+              rejectFromCurrentStage('admin')
+            )) ||
+          (isDepartmentIT() &&
+            (
+              unitApprove('department-it') ||
+              rejectFromCurrentStage('department-it') ||
+              unitStartRepair('department-it') ||
+              unitComplete('department-it')
+            )) ||
+          (isTukang() &&
+            (
+              unitApprove('tukang') ||
+              rejectFromCurrentStage('tukang') ||
+              unitStartRepair('tukang') ||
+              unitComplete('tukang')
+            )) ||
+          (isBusinessOffice() &&
+            (
+              boApprove() ||
+              rejectFromCurrentStage('business-office')
+            ))
+        );
+
+      allow delete: if false;
+    }
+  }
+}

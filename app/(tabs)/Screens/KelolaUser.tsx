@@ -1,6 +1,18 @@
-import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import {
+  collection,
+  addDoc,
+  deleteDoc,
+  doc,
+  getDocs,
+  onSnapshot,
+  query,
+  where,
+} from "firebase/firestore";
+import { createUserWithEmailAndPassword, signOut } from "firebase/auth";
+import { db, secondaryAuth } from "@/lib/firebase";
 import {
   Platform,
   SafeAreaView,
@@ -11,9 +23,11 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
+  ActivityIndicator,
+  Alert,
+} from "react-native";
 
-type UserRole = 'Department IT' | 'Tukang' | 'Business Office' | 'Pelapor';
+type UserRole = "Department IT" | "Tukang" | "Business Office" | "Pelapor";
 
 interface UserItem {
   id: string;
@@ -23,69 +37,61 @@ interface UserItem {
 }
 
 const roleOptions: UserRole[] = [
-  'Pelapor',
-  'Department IT',
-  'Tukang',
-  'Business Office',
+  "Pelapor",
+  "Department IT",
+  "Tukang",
+  "Business Office",
 ];
-
-const initialUsers: UserItem[] = [
-  {
-    id: '1',
-    name: 'Department IT',
-    email: 'it@unklab.ac.id',
-    role: 'Department IT',
-  },
-  {
-    id: '2',
-    name: 'Tukang',
-    email: 'tukang@unklab.ac.id',
-    role: 'Tukang',
-  },
-  {
-    id: '3',
-    name: 'Business Office',
-    email: 'bo@unklab.ac.id',
-    role: 'Business Office',
-  },
-  {
-    id: '4',
-    name: 'Pelapor',
-    email: 's22210208@unklab.ac.id',
-    role: 'Pelapor',
-  },
-];
-
-const getRoleStyle = (role: UserRole) => {
-  switch (role) {
-    case 'Department IT':
-      return { bg: '#DBEAFE', text: '#1D4ED8' };
-    case 'Tukang':
-      return { bg: '#FEF3C7', text: '#92400E' };
-    case 'Pelapor':
-      return { bg: '#F3E8FF', text: '#7E22CE' };
-    case 'Business Office':
-    default:
-      return { bg: '#DCFCE7', text: '#166534' };
-  }
-};
 
 const KelolaUserScreen: React.FC = () => {
   const router = useRouter();
-  const [userList, setUserList] = useState<UserItem[]>(initialUsers);
+  const [userList, setUserList] = useState<UserItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserItem | null>(null);
-  const [newEmail, setNewEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [newRole, setNewRole] = useState<string>('');
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState<string>("");
   const [showRoleMenu, setShowRoleMenu] = useState(false);
+  const [adding, setAdding] = useState(false);
+
+  // Fetch users from Firestore
+  useEffect(() => {
+    setLoading(true);
+    const unsubscribe = onSnapshot(
+      collection(db, "users"),
+      (querySnapshot) => {
+        const usersData: UserItem[] = [];
+
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          usersData.push({
+            id: doc.id,
+            name: data.name || "",
+            email: data.email || "",
+            role: data.role || "Pelapor",
+          });
+        });
+
+        setUserList(usersData);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error fetching users:", error);
+        Alert.alert("Error", "Gagal memuat data pengguna");
+        setLoading(false);
+      },
+    );
+
+    return unsubscribe;
+  }, []);
 
   const handleBack = () => {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace('/(tabs)/Screens/DashboardAdmin');
+      router.replace("/(tabs)/Screens/DashboardAdmin");
     }
   };
 
@@ -99,14 +105,121 @@ const KelolaUserScreen: React.FC = () => {
     setSelectedUser(null);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!selectedUser) {
       return;
     }
 
-    setUserList(prev => prev.filter(user => user.id !== selectedUser.id));
-    handleCloseDeleteModal();
+    try {
+      await deleteDoc(doc(db, "users", selectedUser.id));
+      Alert.alert("Berhasil", "Pengguna berhasil dihapus");
+      handleCloseDeleteModal();
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      Alert.alert("Error", "Gagal menghapus pengguna");
+    }
   };
+
+  const handleAddUser = async () => {
+    if (!newEmail.trim() || !newPassword.trim() || !newRole) {
+      Alert.alert("Error", "Semua field harus diisi");
+      return;
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newEmail.trim())) {
+      Alert.alert("Error", "Format email tidak valid");
+      return;
+    }
+
+    // Validate password length
+    if (newPassword.length < 6) {
+      Alert.alert("Error", "Password minimal 6 karakter");
+      return;
+    }
+
+    try {
+      setAdding(true);
+
+      // Check if email already exists in Firestore first
+      const emailQuery = query(
+        collection(db, "users"),
+        where("email", "==", newEmail.trim()),
+      );
+      const emailSnapshot = await getDocs(emailQuery);
+
+      if (!emailSnapshot.empty) {
+        Alert.alert("Error", "Email sudah terdaftar di sistem");
+        return;
+      }
+
+      // Create user in Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(
+        secondaryAuth,
+        newEmail.trim(),
+        newPassword,
+      );
+      const uid = userCredential.user.uid;
+
+      // Save user data to Firestore with UID
+      await addDoc(collection(db, "users"), {
+        uid: uid,
+        name: newEmail.split("@")[0], // Use email prefix as name
+        email: newEmail.trim(),
+        role: newRole,
+        createdAt: new Date(),
+      });
+
+      await signOut(secondaryAuth);
+
+      setNewEmail("");
+      setNewPassword("");
+      setNewRole("");
+      setShowRoleMenu(false);
+      setShowAddModal(false);
+      Alert.alert("Berhasil", "Pengguna berhasil ditambahkan");
+    } catch (error: any) {
+      console.error("Error adding user:", error);
+      let errorMessage = "Gagal menambahkan pengguna";
+
+      // Handle Firebase Auth errors
+      if (error && error.code) {
+        switch (error.code) {
+          case "auth/email-already-in-use":
+            errorMessage = "Email sudah digunakan oleh akun lain";
+            break;
+          case "auth/weak-password":
+            errorMessage = "Password terlalu lemah (minimal 6 karakter)";
+            break;
+          case "auth/invalid-email":
+            errorMessage = "Format email tidak valid";
+            break;
+          case "auth/operation-not-allowed":
+            errorMessage = "Pendaftaran akun dinonaktifkan";
+            break;
+          default:
+            errorMessage = `Error: ${error.message || "Terjadi kesalahan tidak dikenal"}`;
+            break;
+        }
+      } else if (error && error.message) {
+        errorMessage = `Error: ${error.message}`;
+      }
+
+      Alert.alert("Error", errorMessage);
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.safeArea, styles.centerContent]}>
+        <ActivityIndicator size="large" color="#7C3AED" />
+        <Text style={styles.loadingText}>Memuat data pengguna...</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -114,10 +227,7 @@ const KelolaUserScreen: React.FC = () => {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={handleBack}
-        >
+        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Feather name="arrow-left" size={28} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Kelola User</Text>
@@ -145,7 +255,6 @@ const KelolaUserScreen: React.FC = () => {
 
         {/* List User */}
         {userList.map((user) => {
-          const roleStyle = getRoleStyle(user.role);
           return (
             <View key={user.id} style={styles.userCard}>
               <View style={styles.userLeft}>
@@ -217,22 +326,22 @@ const KelolaUserScreen: React.FC = () => {
                 <TouchableOpacity
                   style={styles.modalSelect}
                   activeOpacity={0.8}
-                  onPress={() => setShowRoleMenu(prev => !prev)}
+                  onPress={() => setShowRoleMenu((prev) => !prev)}
                 >
                   <Text
                     style={[
                       styles.modalSelectText,
-                      !newRole && { color: '#9CA3AF' },
+                      !newRole && { color: "#9CA3AF" },
                     ]}
                   >
-                    {newRole || 'Pilih role user'}
+                    {newRole || "Pilih role user"}
                   </Text>
                   <Feather name="chevron-down" size={18} color="#9CA3AF" />
                 </TouchableOpacity>
 
                 {showRoleMenu && (
                   <View style={styles.roleMenu}>
-                    {roleOptions.map(role => (
+                    {roleOptions.map((role) => (
                       <TouchableOpacity
                         key={role}
                         style={styles.roleMenuItem}
@@ -256,9 +365,9 @@ const KelolaUserScreen: React.FC = () => {
                 activeOpacity={0.8}
                 onPress={() => {
                   setShowAddModal(false);
-                  setNewEmail('');
-                  setNewPassword('');
-                  setNewRole('');
+                  setNewEmail("");
+                  setNewPassword("");
+                  setNewRole("");
                   setShowRoleMenu(false);
                 }}
               >
@@ -267,16 +376,12 @@ const KelolaUserScreen: React.FC = () => {
               <TouchableOpacity
                 style={styles.modalButtonSubmit}
                 activeOpacity={0.8}
-                onPress={() => {
-                  // TODO: logika tambah user
-                  setShowAddModal(false);
-                  setNewEmail('');
-                  setNewPassword('');
-                  setNewRole('');
-                  setShowRoleMenu(false);
-                }}
+                onPress={handleAddUser}
+                disabled={adding}
               >
-                <Text style={styles.modalButtonSubmitText}>Tambah</Text>
+                <Text style={styles.modalButtonSubmitText}>
+                  {adding ? "Menambah..." : "Tambah"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -292,7 +397,9 @@ const KelolaUserScreen: React.FC = () => {
             </View>
 
             <Text style={styles.deleteModalSubtitle}>
-              {'Apakah Anda yakin ingin menghapus akun ' + selectedUser.name + '?'}
+              {"Apakah Anda yakin ingin menghapus akun " +
+                selectedUser.name +
+                "?"}
             </Text>
 
             <View style={styles.deleteModalButtonRow}>
@@ -322,30 +429,30 @@ const KelolaUserScreen: React.FC = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: "#F5F5F5",
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop:
-      Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 8 : 16,
+      Platform.OS === "android" ? (StatusBar.currentHeight || 0) + 8 : 16,
     paddingBottom: 30,
-    backgroundColor: '#7C3AED',
+    backgroundColor: "#7C3AED",
     borderBottomLeftRadius: 60,
     borderBottomRightRadius: 60,
   },
   backButton: {
     width: 40,
     height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
   scroll: {
     flex: 1,
@@ -360,48 +467,48 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   addUserCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 20,
     paddingHorizontal: 8,
     paddingVertical: 8,
-    shadowColor: '#000000',
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 4,
   },
   addUserButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#7C3AED',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#7C3AED",
     borderRadius: 999,
     paddingVertical: 10,
   },
   addUserText: {
     marginLeft: 10,
     fontSize: 15,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
   userCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 22,
     paddingHorizontal: 18,
     paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 14,
-    shadowColor: '#000000',
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
     shadowRadius: 6,
     elevation: 2,
   },
   userLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     flex: 1,
     paddingRight: 12,
   },
@@ -409,9 +516,9 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 12,
   },
   userInfo: {
@@ -419,51 +526,51 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 15,
-    fontWeight: '700',
-    color: '#111827',
+    fontWeight: "700",
+    color: "#111827",
     marginBottom: 2,
   },
   userEmailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 6,
   },
   userEmail: {
     fontSize: 13,
-    color: '#6B7280',
+    color: "#6B7280",
   },
   roleBadge: {
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 999,
   },
   roleBadgeText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   deleteButton: {
     padding: 8,
   },
   modalOverlay: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(0,0,0,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 24,
   },
   modalCard: {
-    width: '100%',
+    width: "100%",
     maxWidth: 360,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 22,
     paddingHorizontal: 20,
     paddingVertical: 18,
-    shadowColor: '#000000',
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 12,
@@ -471,15 +578,15 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-    textAlign: 'center',
+    fontWeight: "700",
+    color: "#111827",
+    textAlign: "center",
   },
   modalSubtitle: {
     marginTop: 6,
     fontSize: 12,
-    color: '#6B7280',
-    textAlign: 'center',
+    color: "#6B7280",
+    textAlign: "center",
     marginBottom: 14,
   },
   modalFieldGroup: {
@@ -487,42 +594,42 @@ const styles = StyleSheet.create({
   },
   modalLabel: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#111827',
+    fontWeight: "600",
+    color: "#111827",
     marginBottom: 6,
   },
   modalInput: {
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#F9FAFB',
+    borderColor: "#D1D5DB",
+    backgroundColor: "#F9FAFB",
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 13,
-    color: '#111827',
+    color: "#111827",
   },
   modalSelect: {
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#F9FAFB',
+    borderColor: "#D1D5DB",
+    backgroundColor: "#F9FAFB",
     paddingHorizontal: 12,
     paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   modalSelectText: {
     fontSize: 13,
-    color: '#111827',
+    color: "#111827",
   },
   roleMenu: {
     marginTop: 4,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#FFFFFF',
-    overflow: 'hidden',
+    borderColor: "#D1D5DB",
+    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
   },
   roleMenuItem: {
     paddingHorizontal: 12,
@@ -530,50 +637,50 @@ const styles = StyleSheet.create({
   },
   roleMenuItemText: {
     fontSize: 13,
-    color: '#111827',
+    color: "#111827",
   },
   modalButtonRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginTop: 18,
   },
   modalButtonCancel: {
     flex: 1,
     borderRadius: 999,
     paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 8,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: "#F3F4F6",
   },
   modalButtonCancelText: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#4B5563',
+    fontWeight: "600",
+    color: "#4B5563",
   },
   modalButtonSubmit: {
     flex: 1,
     borderRadius: 999,
     paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginLeft: 8,
-    backgroundColor: '#7C3AED',
+    backgroundColor: "#7C3AED",
   },
   modalButtonSubmitText: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
   deleteModalCard: {
-    width: '100%',
+    width: "100%",
     maxWidth: 340,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 20,
     paddingHorizontal: 20,
     paddingVertical: 18,
-    shadowColor: '#000000',
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.14,
     shadowRadius: 12,
@@ -583,53 +690,61 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#FEE2E2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
+    backgroundColor: "#FEE2E2",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
     marginBottom: 10,
   },
   deleteModalSubtitle: {
     marginTop: 6,
     fontSize: 13,
-    color: '#6B7280',
-    textAlign: 'center',
+    color: "#6B7280",
+    textAlign: "center",
   },
   deleteModalButtonRow: {
     marginTop: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
   },
   deleteModalCancelButton: {
     flex: 1,
     borderRadius: 999,
     paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#E5E7EB',
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#E5E7EB",
   },
   deleteModalConfirmButton: {
     flex: 1,
     borderRadius: 999,
     paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#DC2626',
-    flexDirection: 'row',
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#DC2626",
+    flexDirection: "row",
     gap: 6,
   },
   deleteModalCancelText: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#4B5563',
+    fontWeight: "600",
+    color: "#4B5563",
   },
   deleteModalConfirmText: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  centerContent: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: "#6B7280",
   },
 });
 
 export default KelolaUserScreen;
-

@@ -1,7 +1,11 @@
-import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React from 'react';
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Image } from "expo-image";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
+import { doc, onSnapshot } from "firebase/firestore";
 import {
+  ActivityIndicator,
+  Modal,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -10,330 +14,188 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
+} from "react-native";
+import { db } from "@/lib/firebase";
+import { formatPriorityLabel } from "@/app/utils/priority";
+import {
+  getPelaporStatusLabel,
+  getUnitLabel,
+  getWorkflowStageLabel,
+  normalizeWorkflowReport,
+  type WorkflowReport,
+} from "@/app/utils/workflow";
 
-type TimelineTone = 'warning' | 'info' | 'accent' | 'success';
-type TimelineState = 'done' | 'current';
-type WorkflowSource =
-  | 'pelapor'
-  | 'admin'
-  | 'unit'
-  | 'business-office'
-  | 'unknown';
+type TimelineTone = "warning" | "info" | "accent" | "success";
 
 interface TimelineItem {
   id: string;
   title: string;
   badge: string;
-  actor: string;
-  role: string;
-  date: string;
   tone: TimelineTone;
-  state: TimelineState;
-}
-
-interface TimelineStepDefinition {
-  id: string;
-  title: string;
-  currentBadge: string;
-  doneBadge: string;
   actor: string;
-  role: string;
-  currentTone: TimelineTone;
-  doneTone: TimelineTone;
+  role?: string;
+  date: string;
 }
-
-const formatPriorityLabel = (priority: string) => {
-  switch (priority.toLowerCase()) {
-    case 'critical':
-      return 'Kritis';
-    case 'high':
-      return 'Tinggi';
-    case 'medium':
-      return 'Sedang';
-    default:
-      return 'Rendah';
-  }
-};
 
 const getPriorityPalette = (priority: string) => {
   switch (priority.toLowerCase()) {
-    case 'critical':
-      return { bg: '#FEF2F2', border: '#FCA5A5', text: '#B91C1C' };
-    case 'high':
-      return { bg: '#FFF7ED', border: '#FDBA74', text: '#C2410C' };
-    case 'medium':
-      return { bg: '#EFF6FF', border: '#93C5FD', text: '#1D4ED8' };
+    case "critical":
+      return { bg: "#FEF2F2", border: "#FCA5A5", text: "#B91C1C" };
+    case "high":
+      return { bg: "#FFF7ED", border: "#FDBA74", text: "#C2410C" };
+    case "medium":
+      return { bg: "#EFF6FF", border: "#93C5FD", text: "#1D4ED8" };
     default:
-      return { bg: '#F0FDF4', border: '#86EFAC', text: '#15803D' };
+      return { bg: "#F0FDF4", border: "#86EFAC", text: "#15803D" };
   }
 };
 
-const getTimelineBadgeStyle = (tone: TimelineTone) => {
+const getToneStyle = (tone: TimelineTone) => {
   switch (tone) {
-    case 'warning':
-      return {
-        backgroundColor: '#FEF3C7',
-        color: '#A16207',
-        icon: 'clock-outline' as const,
-      };
-    case 'accent':
-      return {
-        backgroundColor: '#FFF1E7',
-        color: '#EA580C',
-        icon: 'progress-clock' as const,
-      };
-    case 'success':
-      return {
-        backgroundColor: '#DCFCE7',
-        color: '#166534',
-        icon: 'check-circle-outline' as const,
-      };
+    case "warning":
+      return { bg: "#FEF3C7", text: "#A16207", icon: "clock-outline" as const };
+    case "accent":
+      return { bg: "#FFF1E7", text: "#EA580C", icon: "progress-clock" as const };
+    case "success":
+      return { bg: "#DCFCE7", text: "#166534", icon: "check-circle-outline" as const };
     default:
-      return {
-        backgroundColor: '#DBEAFE',
-        color: '#2563EB',
-        icon: 'check-circle-outline' as const,
-      };
+      return { bg: "#DBEAFE", text: "#2563EB", icon: "check-circle-outline" as const };
   }
 };
 
-const withDefaultTime = (date: string) => {
-  if (date.includes(':')) {
-    return date;
-  }
-
-  return `${date}, 08:00`;
-};
-
-const withoutTime = (date: string) => date.replace(/,\s*\d{1,2}:\d{2}$/, '');
-
-const resolveWorkflowSource = (
-  workflowSource?: string,
-  returnPath?: string
-): WorkflowSource => {
-  switch (workflowSource) {
-    case 'pelapor':
-    case 'admin':
-    case 'unit':
-    case 'business-office':
-      return workflowSource;
-    default:
-      break;
-  }
-
-  if (!returnPath) {
-    return 'unknown';
-  }
-
-  if (returnPath.includes('DashboardPelapor')) {
-    return 'pelapor';
-  }
-
-  if (returnPath.includes('DashboardAdmin')) {
-    return 'admin';
-  }
-
-  if (
-    returnPath.includes('DashboardDepartmentIT') ||
-    returnPath.includes('DashboardTukang')
-  ) {
-    return 'unit';
-  }
-
-  if (returnPath.includes('DashboardBusinessOffice')) {
-    return 'business-office';
-  }
-
-  return 'unknown';
-};
-
-const inferCurrentStepIndex = ({
-  source,
-  status,
-  actionState,
-}: {
-  source: WorkflowSource;
-  status: string;
-  actionState: string;
-}) => {
-  const normalizedStatus = status.toLowerCase();
-  const normalizedAction = actionState.toLowerCase();
-
-  if (normalizedStatus === 'selesai' || normalizedAction === 'completed') {
-    return 5;
-  }
-
-  if (normalizedAction === 'repairing') {
-    return 4;
-  }
-
-  switch (source) {
-    case 'pelapor':
-      return normalizedStatus === 'selesai' ? 5 : 4;
-    case 'admin':
-      return normalizedAction === 'accepted' || normalizedStatus === 'verifikasi' ? 2 : 1;
-    case 'unit':
-      if (normalizedAction === 'accepted') {
-        return 3;
-      }
-      if (normalizedAction === 'new') {
-        return 2;
-      }
-      return normalizedStatus === 'proses' ? 4 : 2;
-    case 'business-office':
-      if (normalizedAction === 'accepted') {
-        return 4;
-      }
-      return 3;
-    default:
-      if (normalizedStatus === 'pending') {
-        return 1;
-      }
-      if (normalizedStatus === 'verifikasi') {
-        return 2;
-      }
-      if (normalizedStatus === 'approved') {
-        return 3;
-      }
-      if (normalizedStatus === 'proses') {
-        return 4;
-      }
-      return 0;
-  }
-};
-
-const buildTimeline = ({
-  source,
-  status,
-  actionState,
-  isIT,
-  pelapor,
-  dibuatPada,
-}: {
-  source: WorkflowSource;
-  status: string;
-  actionState: string;
-  isIT: boolean;
-  pelapor: string;
-  dibuatPada: string;
-}): TimelineItem[] => {
-  const handlerName = isIT ? 'Department IT' : 'Tukang';
-  const handlerRole = isIT ? 'department it' : 'tukang';
-  const currentIndex = inferCurrentStepIndex({ source, status, actionState });
-
-  const template: TimelineStepDefinition[] = [
+const buildTimeline = (report: WorkflowReport): TimelineItem[] => {
+  const unitName = getUnitLabel(report.unitTarget);
+  const displayDate = report.date ? `${report.date}, 08:00` : "-";
+  const allSteps: TimelineItem[] = [
     {
-      id: 'reporter',
-      title: 'Pelapor membuat laporan',
-      currentBadge: 'Laporan berhasil dibuat',
-      doneBadge: 'Laporan berhasil dibuat',
-      actor: pelapor,
-      role: 'pelapor',
-      currentTone: 'info',
-      doneTone: 'info',
+      id: "created",
+      title: "Pelapor Membuat Laporan",
+      badge: "Selesai",
+      tone: "info",
+      actor: report.author,
+      role: "pelapor",
+      date: displayDate,
     },
     {
-      id: 'admin-review',
-      title: 'Admin konfirmasi laporan',
-      currentBadge: 'Menunggu konfirmasi admin',
-      doneBadge: 'Diterima',
-      actor: 'Admin',
-      role: 'admin',
-      currentTone: 'warning',
-      doneTone: 'info',
+      id: "admin",
+      title: "Admin Konfirmasi Laporan",
+      badge: "Selesai",
+      tone: "info",
+      actor: "Admin",
+      date: displayDate,
     },
     {
-      id: 'unit-review',
-      title: `${handlerName} konfirmasi laporan`,
-      currentBadge: `Menunggu konfirmasi ${handlerName}`,
-      doneBadge: 'Diterima',
-      actor: handlerName,
-      role: handlerRole,
-      currentTone: 'warning',
-      doneTone: 'info',
+      id: "unit",
+      title: `${unitName} Konfirmasi Laporan`,
+      badge: "Selesai",
+      tone: "info",
+      actor: unitName,
+      date: displayDate,
     },
     {
-      id: 'business-office-review',
-      title: 'Business Office konfirmasi laporan',
-      currentBadge: 'Menunggu konfirmasi biaya',
-      doneBadge: 'Diterima',
-      actor: 'Business Office',
-      role: 'business office',
-      currentTone: 'warning',
-      doneTone: 'info',
+      id: "bo",
+      title: "Business Office Konfirmasi Laporan",
+      badge: "Selesai",
+      tone: "info",
+      actor: "Business Office",
+      date: displayDate,
     },
     {
-      id: 'repair-progress',
-      title: 'Perbaikan sedang berjalan',
-      currentBadge: 'Proses',
-      doneBadge: 'Proses',
-      actor: handlerName,
-      role: handlerRole,
-      currentTone: 'accent',
-      doneTone: 'accent',
+      id: "repair",
+      title: "Perbaikan sedang berjalan",
+      badge: "Selesai",
+      tone: "accent",
+      actor: unitName,
+      date: displayDate,
     },
     {
-      id: 'repair-complete',
-      title: 'Perbaikan selesai',
-      currentBadge: 'Selesai',
-      doneBadge: 'Selesai',
-      actor: handlerName,
-      role: handlerRole,
-      currentTone: 'success',
-      doneTone: 'success',
+      id: "done",
+      title: "Perbaikan Selesai",
+      badge: "Selesai",
+      tone: "success",
+      actor: unitName,
+      date: displayDate,
     },
   ];
 
-  const visibleTimeline = template.slice(0, currentIndex + 1);
+  const currentIndexMap = {
+    admin_review: 1,
+    unit_review: 2,
+    business_office_review: 3,
+    unit_repair: report.workflowState === "repairing" ? 4 : 4,
+    done: 5,
+    rejected: report.workflowState === "submitted" ? 0 : report.workflowStage === "rejected" ? 1 : 1,
+  } as const;
 
-  return visibleTimeline.map((item, index) => {
-    const isCurrent = index === visibleTimeline.length - 1;
+  const lastIndex = currentIndexMap[report.workflowStage];
+  const steps: TimelineItem[] = allSteps.slice(0, lastIndex + 1).map((item, index) => {
+    if (index < lastIndex) return item;
 
-    return {
-      id: item.id,
-      title: item.title,
-      badge: isCurrent ? item.currentBadge : item.doneBadge,
-      actor: item.actor,
-      role: item.role,
-      date: withoutTime(dibuatPada),
-      tone: isCurrent ? item.currentTone : item.doneTone,
-      state: isCurrent ? 'current' : 'done',
-    };
+    if (report.workflowStage === "admin_review") {
+      return { ...item, badge: "Menunggu Admin", tone: "warning" };
+    }
+    if (report.workflowStage === "unit_review") {
+      return { ...item, badge: `Menunggu ${unitName}`, tone: "warning" };
+    }
+    if (report.workflowStage === "business_office_review") {
+      return { ...item, badge: "Menunggu Business Office", tone: "warning" };
+    }
+    if (report.workflowStage === "unit_repair" && report.workflowState === "bo_approved") {
+      return { ...item, badge: "Menunggu Dikerjakan", tone: "warning" };
+    }
+    if (report.workflowStage === "unit_repair" && report.workflowState === "repairing") {
+      return { ...item, badge: "Sedang Diperbaiki", tone: "accent" };
+    }
+    if (report.workflowStage === "done") {
+      return { ...item, badge: "Selesai", tone: "success" };
+    }
+    return { ...item, badge: "Ditolak", tone: "warning" };
   });
+
+  if (report.workflowStage === "rejected" && report.rejectionReason) {
+    steps.push({
+      id: "rejected",
+      title: "Laporan ditolak",
+      badge: "Ada alasan penolakan",
+      tone: "warning",
+      actor: report.rejectedByRole || "System",
+      date: displayDate,
+    });
+  }
+
+  return steps;
 };
 
 const DetailLaporan: React.FC = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const [report, setReport] = useState<WorkflowReport | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null);
 
-  const data = {
-    id: (params.id as string) || 'L000',
-    kategori: (params.category as string) || 'IT',
-    judul: (params.title as string) || 'Judul Laporan',
-    pelapor: (params.author as string) || 'Nama Pelapor',
-    dibuatPada: withDefaultTime((params.date as string) || '15/01/2026'),
-    deskripsi: (params.description as string) || 'Tidak ada deskripsi.',
-    statusBadge: (params.status as string) || 'proses',
-    actionState: (params.actionState as string) || '',
-    workflowSource: resolveWorkflowSource(
-      params.workflowSource as string,
-      params.returnPath as string
-    ),
-    icon: (params.icon as string) || 'monitor',
-    priority: (params.priority as string) || 'medium',
-  };
+  useEffect(() => {
+    if (!params.id || typeof params.id !== "string") {
+      setLoading(false);
+      return;
+    }
 
-  const isIT = data.kategori === 'IT';
-  const priorityPalette = getPriorityPalette(data.priority);
-  const timelineItems = buildTimeline({
-    source: data.workflowSource,
-    status: data.statusBadge,
-    actionState: data.actionState,
-    isIT,
-    pelapor: data.pelapor,
-    dibuatPada: data.dibuatPada,
-  });
+    const unsubscribe = onSnapshot(
+      doc(db, "laporan", params.id),
+      (snap) => {
+        if (snap.exists()) {
+          setReport(normalizeWorkflowReport(snap.id, snap.data()));
+        } else {
+          setReport(null);
+        }
+        setLoading(false);
+      },
+      () => {
+        setLoading(false);
+      },
+    );
+
+    return unsubscribe;
+  }, [params.id]);
 
   const handleBack = () => {
     if (params.returnPath) {
@@ -341,62 +203,101 @@ const DetailLaporan: React.FC = () => {
     } else if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace('/(tabs)/Screens/LoginScreen');
+      router.replace("/(tabs)/Screens/LoginScreen");
     }
   };
+
+  const timeline = useMemo(() => (report ? buildTimeline(report) : []), [report]);
+
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.safeArea, styles.centerContent]}>
+        <ActivityIndicator size="large" color="#1E5BFF" />
+        <Text style={styles.loadingText}>Memuat detail laporan...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (!report) {
+    return (
+      <SafeAreaView style={[styles.safeArea, styles.centerContent]}>
+        <Text style={styles.loadingText}>Laporan tidak ditemukan.</Text>
+      </SafeAreaView>
+    );
+  }
+
+  const priorityPalette = getPriorityPalette(report.priority);
+  const statusLabel = getPelaporStatusLabel(report.workflowStage, report.workflowState);
+  const infoDate = report.date ? `${report.date}, 08:00` : "-";
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FCFCFE" />
-
+      <Modal
+        visible={Boolean(selectedPhotoUrl)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedPhotoUrl(null)}
+      >
+        <View style={styles.photoModalOverlay}>
+          <TouchableOpacity
+            style={styles.photoModalClose}
+            onPress={() => setSelectedPhotoUrl(null)}
+          >
+            <Feather name="x" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+          {selectedPhotoUrl ? (
+            <Image
+              source={{ uri: selectedPhotoUrl }}
+              style={styles.photoModalImage}
+              contentFit="contain"
+            />
+          ) : null}
+        </View>
+      </Modal>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Feather name="arrow-left" size={24} color="#111827" />
         </TouchableOpacity>
-
         <View style={styles.headerTextWrap}>
           <Text style={styles.headerTitle}>Detail Laporan</Text>
-          <Text style={styles.headerSubtitle}>ID : {data.id}</Text>
+          <Text style={styles.headerSubtitle}>ID : {report.id}</Text>
         </View>
       </View>
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         <View style={styles.card}>
           <View style={styles.summaryTopRow}>
-            <View
-              style={[
-                styles.summaryIconCard,
-                !isIT && styles.summaryIconCardNonIT,
-              ]}
-            >
-              <Feather
-                name={data.icon === 'monitor' ? 'monitor' : 'tool'}
-                size={21}
-                color={isIT ? '#2D5BFF' : '#EA580C'}
-              />
+            <View style={styles.summaryLeft}>
+              <View
+                style={[
+                  styles.iconWrap,
+                  report.kategori === "Non-IT" && styles.iconWrapNonIT,
+                ]}
+              >
+                <Feather
+                  name={report.icon === "monitor" ? "monitor" : "tool"}
+                  size={18}
+                  color={report.kategori === "IT" ? "#1D4ED8" : "#EA580C"}
+                />
+              </View>
             </View>
-
             <View style={styles.summaryBadgeRow}>
               <View
                 style={[
                   styles.categoryChip,
-                  !isIT && styles.categoryChipNonIT,
+                  report.kategori === "Non-IT" && styles.categoryChipNonIT,
                 ]}
               >
                 <Text
                   style={[
                     styles.categoryChipText,
-                    !isIT && styles.categoryChipTextNonIT,
+                    report.kategori === "Non-IT" && styles.categoryChipTextNonIT,
                   ]}
                 >
-                  {data.kategori}
+                  {report.kategori}
                 </Text>
               </View>
-
               <View
                 style={[
                   styles.priorityBadge,
@@ -406,106 +307,105 @@ const DetailLaporan: React.FC = () => {
                   },
                 ]}
               >
-                <Text
-                  style={[
-                    styles.priorityBadgeText,
-                    { color: priorityPalette.text },
-                  ]}
-                >
-                  {formatPriorityLabel(data.priority)}
+                <Text style={[styles.priorityBadgeText, { color: priorityPalette.text }]}>
+                  {formatPriorityLabel(report.priority)}
                 </Text>
               </View>
             </View>
           </View>
 
-          <Text style={styles.reportTitle}>{data.judul}</Text>
+          <Text style={styles.summaryTitle}>{report.title}</Text>
 
-          <View style={styles.metaItem}>
-            <MaterialCommunityIcons
-              name="account-circle"
-              size={18}
-              color="#9CA3AF"
-            />
-            <Text style={styles.metaText}>{data.pelapor}</Text>
+          <View style={styles.metaGroup}>
+            <View style={styles.metaRow}>
+              <Feather
+                name="user"
+                size={16}
+                color="#9CA3AF"
+              />
+              <Text style={styles.metaText}>{report.author}</Text>
+            </View>
+            <View style={styles.metaRow}>
+              <Feather name="calendar" size={16} color="#9CA3AF" />
+              <Text style={styles.metaText}>Dibuat {infoDate}</Text>
+            </View>
           </View>
 
-          <View style={styles.metaItem}>
-            <MaterialCommunityIcons
-              name="calendar-month-outline"
-              size={17}
-              color="#9CA3AF"
-            />
-            <Text style={styles.metaText}>Dibuat {data.dibuatPada}</Text>
-          </View>
+          {report.rejectionReason ? (
+            <View style={styles.rejectBox}>
+              <Text style={styles.rejectTitle}>Alasan Penolakan</Text>
+              <Text style={styles.rejectText}>{report.rejectionReason}</Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Deskripsi kerusakan</Text>
-          <Text style={styles.descriptionText}>{data.deskripsi}</Text>
+          <Text style={styles.sectionDescription}>{report.description}</Text>
         </View>
+
+        {report.photos.length > 0 ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Foto kerusakan</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.photoScroll}
+            >
+              {report.photos.map((photo, index) => (
+                <TouchableOpacity
+                  key={`${photo.url}-${index}`}
+                  activeOpacity={0.9}
+                  onPress={() => setSelectedPhotoUrl(photo.url)}
+                >
+                  <Image
+                    source={{ uri: photo.url }}
+                    style={styles.reportPhoto}
+                    contentFit="cover"
+                  />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Timeline Proses</Text>
-
-          <View style={styles.timelineList}>
-            {timelineItems.map((item, index) => {
-              const badgeStyle = getTimelineBadgeStyle(item.tone);
-              const isCurrent = item.state === 'current';
-              const isDone = item.state === 'done';
-              const isLast = index === timelineItems.length - 1;
-
-              return (
-                <View key={item.id} style={styles.timelineItemRow}>
-                  <View style={styles.timelineIndicatorColumn}>
-                    <View
-                      style={[
-                        styles.timelineDot,
-                        isCurrent && styles.timelineDotCurrent,
-                        isDone && styles.timelineDotDone,
-                      ]}
-                    />
-                    {!isLast && <View style={styles.timelineLine} />}
-                  </View>
-
+          <Text style={styles.currentStatusText}>
+            {getWorkflowStageLabel(report.workflowStage, report.workflowState)} / {statusLabel}
+          </Text>
+          {timeline.map((item) => {
+            const tone = getToneStyle(item.tone);
+            return (
+              <View key={item.id} style={styles.timelineItem}>
+                <View style={styles.timelineRail}>
                   <View
                     style={[
-                      styles.timelineContent,
-                      isLast && styles.timelineContentLast,
+                      styles.timelineDot,
+                      item.id === timeline[timeline.length - 1]?.id && styles.timelineDotActive,
                     ]}
-                  >
-                    <Text style={styles.timelineTitle}>{item.title}</Text>
-
-                    <View
-                      style={[
-                        styles.timelineBadge,
-                        { backgroundColor: badgeStyle.backgroundColor },
-                      ]}
-                    >
-                      <MaterialCommunityIcons
-                        name={badgeStyle.icon}
-                        size={12}
-                        color={badgeStyle.color}
-                      />
-                      <Text
-                        style={[
-                          styles.timelineBadgeText,
-                          { color: badgeStyle.color },
-                        ]}
-                      >
-                        {item.badge}
-                      </Text>
-                    </View>
-
-                    <Text style={styles.timelineActor}>
-                      {item.actor}
-                      <Text style={styles.timelineRole}> ({item.role})</Text>
-                    </Text>
-                    <Text style={styles.timelineDate}>{item.date}</Text>
-                  </View>
+                  />
+                  {item.id !== timeline[timeline.length - 1]?.id ? (
+                    <View style={styles.timelineLine} />
+                  ) : null}
                 </View>
-              );
-            })}
-          </View>
+                <View style={styles.timelineContent}>
+                  <Text style={styles.timelineTitle}>{item.title}</Text>
+                  <View style={[styles.timelineBadgePill, { backgroundColor: tone.bg }]}>
+                    <MaterialCommunityIcons name={tone.icon} size={12} color={tone.text} />
+                    <Text style={[styles.timelineBadge, { color: tone.text }]}>{item.badge}</Text>
+                  </View>
+                  <Text style={styles.timelineActor}>
+                    {item.actor}
+                    {item.role ? (
+                      <Text style={styles.timelineRole}> ({item.role})</Text>
+                    ) : null}
+                  </Text>
+                  <Text style={styles.timelineDate}>{item.date}</Text>
+                </View>
+              </View>
+            );
+          })}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -515,208 +415,262 @@ const DetailLaporan: React.FC = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FCFCFE',
+    backgroundColor: "#F8FAFC",
+    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight || 0 : 0,
+  },
+  centerContent: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.95)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 24,
+  },
+  photoModalClose: {
+    position: "absolute",
+    top: Platform.OS === "android" ? (StatusBar.currentHeight || 0) + 16 : 54,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+  },
+  photoModalImage: {
+    width: "100%",
+    height: "82%",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 15,
+    color: "#6B7280",
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 18,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 10 : 10,
+    paddingTop: 10,
     paddingBottom: 12,
+    backgroundColor: "#FAFAFA",
   },
   backButton: {
-    width: 34,
-    height: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 6,
   },
   headerTextWrap: {
     flex: 1,
   },
   headerTitle: {
-    fontSize: 21,
-    fontWeight: '700',
-    color: '#111827',
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#111827",
   },
   headerSubtitle: {
-    marginTop: 2,
     fontSize: 13,
-    fontWeight: '600',
-    color: '#667085',
+    color: "#6B7280",
+    marginTop: 1,
   },
   scroll: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 28,
+    padding: 18,
+    gap: 16,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 14,
     borderWidth: 1,
-    borderColor: '#D4DAE5',
-    shadowColor: '#101828',
+    borderColor: "#E5E7EB",
+    shadowColor: "#111827",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
-    shadowRadius: 3,
-    elevation: 2,
-    marginBottom: 14,
+    shadowRadius: 5,
+    elevation: 1,
   },
   summaryTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 14,
   },
-  summaryIconCard: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#EEF3FF',
-    alignItems: 'center',
-    justifyContent: 'center',
+  summaryLeft: {
     marginRight: 10,
   },
-  summaryIconCardNonIT: {
-    backgroundColor: '#FFF1E7',
+  iconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#EEF4FF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconWrapNonIT: {
+    backgroundColor: "#FFF2E8",
   },
   summaryBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    flex: 1,
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
   },
   categoryChip: {
-    borderRadius: 7,
-    backgroundColor: '#EFF4FF',
     paddingHorizontal: 10,
     paddingVertical: 4,
-    marginRight: 8,
-    marginBottom: 4,
+    borderRadius: 999,
+    backgroundColor: "#EEF4FF",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
   categoryChipNonIT: {
-    backgroundColor: '#FFF1E7',
+    backgroundColor: "#FFF2E8",
   },
   categoryChipText: {
     fontSize: 12,
-    fontWeight: '700',
-    color: '#2D5BFF',
+    fontWeight: "700",
+    color: "#3730A3",
   },
   categoryChipTextNonIT: {
-    color: '#EA580C',
+    color: "#C2410C",
   },
   priorityBadge: {
-    borderRadius: 999,
-    borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    marginBottom: 4,
+    borderRadius: 999,
+    borderWidth: 1,
   },
   priorityBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: "700",
   },
-  reportTitle: {
-    fontSize: 16,
-    lineHeight: 23,
-    fontWeight: '700',
-    color: '#111827',
+  summaryTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#111827",
     marginBottom: 14,
   },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-    marginBottom: 6,
+  metaGroup: {
+    gap: 10,
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   metaText: {
-    marginLeft: 8,
     fontSize: 13,
-    color: '#6B7280',
+    color: "#6B7280",
+  },
+  rejectBox: {
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: "#FEF2F2",
+  },
+  rejectTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#B91C1C",
+    marginBottom: 4,
+  },
+  rejectText: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: "#7F1D1D",
   },
   sectionTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 12,
+    fontSize: 24 / 1.5,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 10,
   },
-  descriptionText: {
+  sectionDescription: {
     fontSize: 14,
-    lineHeight: 21,
-    color: '#667085',
+    lineHeight: 22,
+    color: "#6B7280",
   },
-  timelineList: {
-    paddingTop: 4,
+  photoScroll: {
+    gap: 12,
   },
-  timelineItemRow: {
-    flexDirection: 'row',
+  reportPhoto: {
+    width: 180,
+    height: 140,
+    borderRadius: 16,
+    backgroundColor: "#E5E7EB",
   },
-  timelineIndicatorColumn: {
+  currentStatusText: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    marginBottom: 8,
+  },
+  timelineItem: {
+    flexDirection: "row",
+    gap: 10,
+    paddingVertical: 4,
+  },
+  timelineRail: {
     width: 22,
-    alignItems: 'center',
-    marginRight: 8,
+    alignItems: "center",
+    paddingTop: 2,
   },
   timelineDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#A1A1AA',
-    marginTop: 5,
+    backgroundColor: "#A1A1AA",
   },
-  timelineDotDone: {
-    backgroundColor: '#8B8E98',
-  },
-  timelineDotCurrent: {
-    backgroundColor: '#2D5BFF',
+  timelineDotActive: {
+    backgroundColor: "#2563EB",
   },
   timelineLine: {
     width: 1.5,
     flex: 1,
-    backgroundColor: '#C8CDD8',
-    marginTop: 6,
+    backgroundColor: "#A1A1AA",
+    marginTop: 4,
   },
   timelineContent: {
     flex: 1,
-    paddingBottom: 14,
-  },
-  timelineContentLast: {
-    paddingBottom: 0,
+    paddingBottom: 16,
   },
   timelineTitle: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#374151',
-    marginBottom: 6,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  timelineBadgePill: {
+    marginTop: 6,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
   },
   timelineBadge: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginBottom: 8,
-  },
-  timelineBadgeText: {
-    marginLeft: 5,
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: "600",
   },
   timelineActor: {
+    marginTop: 8,
     fontSize: 13,
-    color: '#374151',
-    marginBottom: 3,
+    color: "#111827",
   },
   timelineRole: {
-    color: '#9CA3AF',
+    color: "#9CA3AF",
   },
   timelineDate: {
+    marginTop: 3,
     fontSize: 12,
-    color: '#98A2B3',
+    color: "#9CA3AF",
   },
 });
 

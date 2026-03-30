@@ -1,6 +1,9 @@
-import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React from 'react';
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
+import { db, auth } from "@/lib/firebase";
 import {
   Platform,
   SafeAreaView,
@@ -10,9 +13,16 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
+  ActivityIndicator,
+  Alert,
+} from "react-native";
 
-type NotifStatus = 'diverifikasi' | 'dimulai' | 'terverifikasi' | 'selesai';
+type NotifStatus =
+  | "diverifikasi"
+  | "dimulai"
+  | "terverifikasi"
+  | "selesai"
+  | "ditolak";
 
 interface NotifikasiItem {
   id: string;
@@ -21,76 +31,117 @@ interface NotifikasiItem {
   status: NotifStatus;
   date: string;
   time: string;
+  updatedAtValue: number;
 }
-
-const dataNotifikasi: NotifikasiItem[] = [
-  {
-    id: '1',
-    title: 'Laporan Diverifikasi',
-    description: "Laporan 'Proyektor Ruang 301 Tidak Menyala' telah diverifikasi oleh Admin.",
-    status: 'diverifikasi',
-    date: '21 Jan 2026',
-    time: '09:15',
-  },
-  {
-    id: '2',
-    title: 'Perbaikan Dimulai',
-    description:
-      "Laporan 'Proyektor Ruang 301 Tidak Menyala' sedang dalam proses perbaikan oleh IT Support.",
-    status: 'dimulai',
-    date: '22 Jan 2026',
-    time: '10:30',
-  },
-  {
-    id: '3',
-    title: 'Laporan Terverifikasi',
-    description: "Laporan 'AC Perpustakaan Bocor' telah diverifikasi dan diteruskan ke Tukang.",
-    status: 'terverifikasi',
-    date: '25 Jan 2026',
-    time: '09:00',
-  },
-  {
-    id: '4',
-    title: 'Perbaikan Selesai',
-    description:
-      "Perbaikan 'Kursi Kelas Rusak' telah selesai dan disetujui oleh Business Office.",
-    status: 'selesai',
-    date: '19 Jan 2026',
-    time: '16:00',
-  },
-];
 
 const NotifikasiScreen: React.FC = () => {
   const router = useRouter();
+  const [notifications, setNotifications] = useState<NotifikasiItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [authResolved, setAuthResolved] = useState(false);
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setCurrentUser(user.uid);
+      } else {
+        setCurrentUser(null);
+        setLoading(false);
+        router.replace("/(tabs)/Screens/LoginScreen");
+      }
+
+      setAuthResolved(true);
+    });
+
+    return unsubscribe;
+  }, [router]);
+
+  useEffect(() => {
+    if (!authResolved) return;
+    if (!currentUser) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    const q = query(collection(db, "notifications"), where("userUid", "==", currentUser));
+    const unsubscribe = onSnapshot(
+      q,
+      (querySnapshot) => {
+        const notifs: NotifikasiItem[] = [];
+
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          const updatedAt = data.updatedAt?.toDate?.() || data.createdAt?.toDate?.() || new Date();
+          notifs.push({
+            id: doc.id,
+            title: data.title || "Notifikasi",
+            description: data.description || "",
+            status: (data.status as NotifStatus) || "diverifikasi",
+            date: updatedAt.toLocaleDateString("id-ID"),
+            time: updatedAt.toLocaleTimeString("id-ID", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            updatedAtValue: updatedAt.getTime(),
+          });
+        });
+
+        notifs.sort((a, b) => b.updatedAtValue - a.updatedAtValue);
+
+        setNotifications(notifs);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error fetching notifications:", error);
+        Alert.alert("Error", "Gagal memuat notifikasi");
+        setLoading(false);
+      },
+    );
+
+    return unsubscribe;
+  }, [authResolved, currentUser]);
 
   const handleBack = () => {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace('/(tabs)/Screens/LoginScreen');
+      router.replace("/(tabs)/Screens/DashboardPelapor");
     }
   };
 
-  const jumlahBaru = 2;
-
   const getStatusStyle = (status: NotifStatus) => {
-    if (status === 'dimulai') {
+    if (status === "dimulai") {
       return {
-        iconName: 'progress-clock',
-        iconColor: '#2563EB',
-        borderColor: '#DBEAFE',
-        dotColor: '#2563EB',
+        iconName: "progress-clock",
+        iconColor: "#2563EB",
+        borderColor: "#DBEAFE",
+        dotColor: "#2563EB",
       };
     }
 
     // semua status hijau
     return {
-      iconName: 'check-decagram-outline',
-      iconColor: '#16A34A',
-      borderColor: '#DCFCE7',
-      dotColor: '#16A34A',
+      iconName: "check-decagram-outline",
+      iconColor: "#16A34A",
+      borderColor: "#DCFCE7",
+      dotColor: "#16A34A",
     };
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.safeArea, styles.centerContent]}>
+        <ActivityIndicator size="large" color="#7C3AED" />
+        <Text style={styles.loadingText}>Memuat notifikasi...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  const jumlahBaru = notifications.filter(
+    (n) => n.status === "diverifikasi" || n.status === "ditolak",
+  ).length;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -101,7 +152,9 @@ const NotifikasiScreen: React.FC = () => {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Notifikasi</Text>
-          <Text style={styles.headerSubtitle}>{jumlahBaru} notifikasi baru</Text>
+          <Text style={styles.headerSubtitle}>
+            {jumlahBaru} notifikasi baru
+          </Text>
         </View>
         <View style={styles.headerRight}>
           <View style={styles.bellWrapper}>
@@ -116,7 +169,7 @@ const NotifikasiScreen: React.FC = () => {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       >
-        {dataNotifikasi.map((item, index) => {
+        {notifications.map((item, index) => {
           const stylesStatus = getStatusStyle(item.status);
           return (
             <View
@@ -158,24 +211,24 @@ const NotifikasiScreen: React.FC = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0,
+    backgroundColor: "#FFFFFF",
+    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight || 0 : 0,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 20,
     paddingTop: 4,
     paddingBottom: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: "#E5E7EB",
   },
   backButton: {
     width: 40,
     height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginLeft: -4,
   },
   headerCenter: {
@@ -184,12 +237,12 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
+    fontWeight: "700",
+    color: "#111827",
   },
   headerSubtitle: {
     fontSize: 12,
-    color: '#6B7280',
+    color: "#6B7280",
     marginTop: 2,
   },
   headerRight: {
@@ -199,18 +252,18 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#EFF6FF',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#EFF6FF",
+    alignItems: "center",
+    justifyContent: "center",
   },
   bellDot: {
-    position: 'absolute',
+    position: "absolute",
     top: 6,
     right: 7,
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#EF4444',
+    backgroundColor: "#EF4444",
   },
   listContainer: {
     flex: 1,
@@ -221,13 +274,13 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 14,
     marginBottom: 12,
     borderWidth: 1,
-    shadowColor: '#000000',
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
@@ -237,17 +290,17 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 6,
   },
   statusIconWrapper: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#F1F5F9',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#F1F5F9",
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 10,
   },
   cardTitleWrap: {
@@ -255,28 +308,36 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#111827',
+    fontWeight: "700",
+    color: "#111827",
   },
   cardTime: {
     fontSize: 11,
-    color: '#6B7280',
+    color: "#6B7280",
     marginTop: 2,
   },
   unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#2563EB',
+    backgroundColor: "#2563EB",
     marginLeft: 8,
   },
   cardDescription: {
     fontSize: 13,
     lineHeight: 19,
-    color: '#374151',
+    color: "#374151",
     marginTop: 4,
+  },
+  centerContent: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: "#6B7280",
   },
 });
 
 export default NotifikasiScreen;
-
