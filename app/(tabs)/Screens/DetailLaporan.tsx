@@ -16,8 +16,13 @@ import {
   View,
 } from "react-native";
 import { db } from "@/lib/firebase";
+import {
+  getDefaultNameFromEmail,
+  getUserProfileByUid,
+} from "@/lib/user-profile";
 import { formatPriorityLabel } from "@/app/utils/priority";
 import {
+  formatTimelineDate,
   getPelaporStatusLabel,
   getUnitLabel,
   getWorkflowStageLabel,
@@ -30,7 +35,7 @@ type TimelineTone = "warning" | "info" | "accent" | "success";
 interface TimelineItem {
   id: string;
   title: string;
-  badge: string;
+  badge?: string;
   tone: TimelineTone;
   actor: string;
   role?: string;
@@ -63,50 +68,64 @@ const getToneStyle = (tone: TimelineTone) => {
   }
 };
 
-const buildTimeline = (report: WorkflowReport): TimelineItem[] => {
+const getRejectedStepIndex = (report: WorkflowReport) => {
+  switch (report.rejectedByRole) {
+    case "department-it":
+    case "tukang":
+      return 2;
+    case "business-office":
+      return 3;
+    case "admin":
+    default:
+      return 1;
+  }
+};
+
+const buildTimeline = (
+  report: WorkflowReport,
+  displayAuthorName: string,
+): TimelineItem[] => {
   const unitName = getUnitLabel(report.unitTarget);
-  const displayDate = report.date ? `${report.date}, 08:00` : "-";
   const allSteps: TimelineItem[] = [
     {
       id: "created",
       title: "Pelapor Membuat Laporan",
-      badge: "Selesai",
       tone: "info",
-      actor: report.author,
+      actor: displayAuthorName,
       role: "pelapor",
-      date: displayDate,
+      date: formatTimelineDate(report.createdAtValue),
     },
     {
       id: "admin",
       title: "Admin Konfirmasi Laporan",
-      badge: "Selesai",
+      badge: "Diterima Admin",
       tone: "info",
       actor: "Admin",
-      date: displayDate,
+      date: formatTimelineDate(report.approvedByAdminAtValue),
     },
     {
       id: "unit",
       title: `${unitName} Konfirmasi Laporan`,
-      badge: "Selesai",
+      badge: `Diterima ${unitName}`,
       tone: "info",
       actor: unitName,
-      date: displayDate,
+      date: formatTimelineDate(report.approvedByUnitAtValue),
     },
     {
       id: "bo",
       title: "Business Office Konfirmasi Laporan",
-      badge: "Selesai",
+      badge: "Diterima Business Office",
       tone: "info",
       actor: "Business Office",
-      date: displayDate,
+      date: formatTimelineDate(report.approvedByBusinessOfficeAtValue),
     },
     {
       id: "repair",
       title: "Perbaikan sedang berjalan",
-      badge: "Selesai",
+      badge: "Proses",
       tone: "accent",
       actor: unitName,
-      date: displayDate,
+      date: formatTimelineDate(report.repairStartedAtValue),
     },
     {
       id: "done",
@@ -114,7 +133,7 @@ const buildTimeline = (report: WorkflowReport): TimelineItem[] => {
       badge: "Selesai",
       tone: "success",
       actor: unitName,
-      date: displayDate,
+      date: formatTimelineDate(report.completedAtValue),
     },
   ];
 
@@ -124,7 +143,7 @@ const buildTimeline = (report: WorkflowReport): TimelineItem[] => {
     business_office_review: 3,
     unit_repair: report.workflowState === "repairing" ? 4 : 4,
     done: 5,
-    rejected: report.workflowState === "submitted" ? 0 : report.workflowStage === "rejected" ? 1 : 1,
+    rejected: getRejectedStepIndex(report),
   } as const;
 
   const lastIndex = currentIndexMap[report.workflowStage];
@@ -144,24 +163,13 @@ const buildTimeline = (report: WorkflowReport): TimelineItem[] => {
       return { ...item, badge: "Menunggu Dikerjakan", tone: "warning" };
     }
     if (report.workflowStage === "unit_repair" && report.workflowState === "repairing") {
-      return { ...item, badge: "Sedang Diperbaiki", tone: "accent" };
+      return { ...item, badge: "Proses", tone: "accent" };
     }
     if (report.workflowStage === "done") {
       return { ...item, badge: "Selesai", tone: "success" };
     }
     return { ...item, badge: "Ditolak", tone: "warning" };
   });
-
-  if (report.workflowStage === "rejected" && report.rejectionReason) {
-    steps.push({
-      id: "rejected",
-      title: "Laporan ditolak",
-      badge: "Ada alasan penolakan",
-      tone: "warning",
-      actor: report.rejectedByRole || "System",
-      date: displayDate,
-    });
-  }
 
   return steps;
 };
@@ -172,6 +180,7 @@ const DetailLaporan: React.FC = () => {
   const [report, setReport] = useState<WorkflowReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null);
+  const [resolvedAuthorName, setResolvedAuthorName] = useState("");
 
   useEffect(() => {
     if (!params.id || typeof params.id !== "string") {
@@ -197,6 +206,46 @@ const DetailLaporan: React.FC = () => {
     return unsubscribe;
   }, [params.id]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!report) {
+      setResolvedAuthorName("");
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const fallbackAuthor =
+      typeof report.author === "string" && report.author.includes("@")
+        ? getDefaultNameFromEmail(report.author)
+        : report.author;
+
+    setResolvedAuthorName(fallbackAuthor);
+
+    if (!report.authorUid) {
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    void (async () => {
+      try {
+        const profile = await getUserProfileByUid(report.authorUid!);
+
+        if (isMounted && profile?.name) {
+          setResolvedAuthorName(profile.name);
+        }
+      } catch (error) {
+        console.error("Error resolving report author name:", error);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [report]);
+
   const handleBack = () => {
     if (params.returnPath) {
       router.replace(params.returnPath as any);
@@ -207,7 +256,10 @@ const DetailLaporan: React.FC = () => {
     }
   };
 
-  const timeline = useMemo(() => (report ? buildTimeline(report) : []), [report]);
+  const timeline = useMemo(
+    () => (report ? buildTimeline(report, resolvedAuthorName || report.author) : []),
+    [report, resolvedAuthorName],
+  );
 
   if (loading) {
     return (
@@ -227,8 +279,12 @@ const DetailLaporan: React.FC = () => {
   }
 
   const priorityPalette = getPriorityPalette(report.priority);
-  const statusLabel = getPelaporStatusLabel(report.workflowStage, report.workflowState);
-  const infoDate = report.date ? `${report.date}, 08:00` : "-";
+  const statusLabel =
+    report.workflowStage === "unit_repair" && report.workflowState === "repairing"
+      ? "Proses"
+      : getPelaporStatusLabel(report.workflowStage, report.workflowState);
+  const infoDate = formatTimelineDate(report.createdAtValue);
+  const displayAuthorName = resolvedAuthorName || report.author;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -323,7 +379,7 @@ const DetailLaporan: React.FC = () => {
                 size={16}
                 color="#9CA3AF"
               />
-              <Text style={styles.metaText}>{report.author}</Text>
+              <Text style={styles.metaText}>{displayAuthorName}</Text>
             </View>
             <View style={styles.metaRow}>
               <Feather name="calendar" size={16} color="#9CA3AF" />
@@ -370,7 +426,7 @@ const DetailLaporan: React.FC = () => {
         ) : null}
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Timeline Proses</Text>
+          <Text style={styles.sectionTitle}>Status Laporan</Text>
           <Text style={styles.currentStatusText}>
             {getWorkflowStageLabel(report.workflowStage, report.workflowState)} / {statusLabel}
           </Text>
@@ -391,10 +447,14 @@ const DetailLaporan: React.FC = () => {
                 </View>
                 <View style={styles.timelineContent}>
                   <Text style={styles.timelineTitle}>{item.title}</Text>
-                  <View style={[styles.timelineBadgePill, { backgroundColor: tone.bg }]}>
-                    <MaterialCommunityIcons name={tone.icon} size={12} color={tone.text} />
-                    <Text style={[styles.timelineBadge, { color: tone.text }]}>{item.badge}</Text>
-                  </View>
+                  {item.badge ? (
+                    <View style={[styles.timelineBadgePill, { backgroundColor: tone.bg }]}>
+                      <MaterialCommunityIcons name={tone.icon} size={12} color={tone.text} />
+                      <Text style={[styles.timelineBadge, { color: tone.text }]}>
+                        {item.badge}
+                      </Text>
+                    </View>
+                  ) : null}
                   <Text style={styles.timelineActor}>
                     {item.actor}
                     {item.role ? (

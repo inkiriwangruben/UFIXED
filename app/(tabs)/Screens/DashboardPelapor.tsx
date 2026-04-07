@@ -4,6 +4,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { db, auth } from "@/lib/firebase";
+import { LOGIN_ROUTE, signOutCurrentUser } from "@/lib/session";
+import {
+  getDefaultNameFromEmail,
+  getUserProfileByUid,
+} from "@/lib/user-profile";
 import { formatPriorityLabel } from "@/app/utils/priority";
 import {
   getPelaporProgressBucket,
@@ -49,24 +54,44 @@ const DashboardPelapor: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [authResolved, setAuthResolved] = useState(false);
   const [currentUser, setCurrentUser] = useState<string | null>(null);
-  const [currentEmail, setCurrentEmail] = useState<string>("User");
+  const [currentName, setCurrentName] = useState<string>("User");
 
   useEffect(() => {
+    let isMounted = true;
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setCurrentUser(user.uid);
-        setCurrentEmail(user.email || "User");
+        const fallbackName =
+          user.displayName?.trim() ||
+          getDefaultNameFromEmail(user.email || "user@local");
+        setCurrentName(fallbackName);
+
+        void (async () => {
+          try {
+            const profile = await getUserProfileByUid(user.uid);
+
+            if (isMounted && profile?.name) {
+              setCurrentName(profile.name);
+            }
+          } catch (error) {
+            console.error("Error loading pelapor profile:", error);
+          }
+        })();
       } else {
         setCurrentUser(null);
-        setCurrentEmail("User");
+        setCurrentName("User");
         setLoading(false);
-        router.replace("/(tabs)/Screens/LoginScreen");
+        router.replace(LOGIN_ROUTE);
       }
 
       setAuthResolved(true);
     });
 
-    return unsubscribe;
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, [router]);
 
   useEffect(() => {
@@ -131,6 +156,16 @@ const DashboardPelapor: React.FC = () => {
     [laporanList],
   );
 
+  const handleLogout = async () => {
+    try {
+      await signOutCurrentUser();
+    } catch (error) {
+      console.error("Error signing out pelapor:", error);
+    } finally {
+      router.replace(LOGIN_ROUTE);
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={[styles.safeArea, styles.centerContent]}>
@@ -155,7 +190,7 @@ const DashboardPelapor: React.FC = () => {
               </View>
               <View>
                 <Text style={styles.headerWelcome}>Selamat datang</Text>
-                <Text style={styles.headerName}>{currentEmail}</Text>
+                <Text style={styles.headerName}>{currentName}</Text>
               </View>
             </View>
 
@@ -168,7 +203,7 @@ const DashboardPelapor: React.FC = () => {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.headerIconButton}
-                onPress={() => router.replace("/(tabs)/Screens/LoginScreen")}
+                onPress={handleLogout}
               >
                 <Feather name="log-out" size={18} color="#1E5BFF" />
               </TouchableOpacity>
@@ -269,106 +304,118 @@ const DashboardPelapor: React.FC = () => {
           </View>
 
           {/* LIST LAPORAN */}
-          {filteredLaporan.map((item, index) => (
-            <TouchableOpacity
-              key={item.id}
-              style={[styles.reportCard, index > 0 && { marginTop: 12 }]}
-              activeOpacity={0.9}
-              onPress={() =>
-                router.push({
-                  pathname: "/(tabs)/Screens/DetailLaporan",
-                  params: {
-                    id: item.id,
-                    workflowSource: "pelapor",
-                    returnPath: "/(tabs)/Screens/DashboardPelapor",
-                  },
-                })
-              }
-            >
-              <View style={styles.reportHeaderRow}>
-                <View style={styles.reportTitleRow}>
-                  <View style={styles.reportIconCircle}>
-                    {item.icon === "monitor" ? (
-                      <Feather name="monitor" size={16} color="#1E5BFF" />
-                    ) : (
-                      <Feather name="tool" size={16} color="#F97316" />
-                    )}
-                  </View>
-                  <Text style={styles.reportTitle} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                </View>
-                <Feather name="chevron-right" size={18} color="#9CA3AF" />
-              </View>
-
-              <Text style={styles.reportDescription} numberOfLines={3}>
-                {item.description}
+          {filteredLaporan.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Feather name="file-text" size={28} color="#9CA3AF" />
+              <Text style={styles.emptyTitle}>Belum ada laporan</Text>
+              <Text style={styles.emptySubtitle}>
+                Buat laporan baru atau ganti tab untuk melihat data lainnya.
               </Text>
-
-              <View style={styles.reportFooterRow}>
-                <View style={styles.reportMetaRow}>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 12,
-                    }}
-                  >
-                    <View style={styles.reportMetaItem}>
-                      <Feather name="user" size={12} color="#6B7280" />
-                      <Text style={styles.reportMetaText}>{item.author}</Text>
+            </View>
+          ) : (
+            filteredLaporan.map((item, index) => (
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.reportCard, index > 0 && { marginTop: 12 }]}
+                activeOpacity={0.9}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(tabs)/Screens/DetailLaporan",
+                    params: {
+                      id: item.id,
+                      workflowSource: "pelapor",
+                      returnPath: "/(tabs)/Screens/DashboardPelapor",
+                    },
+                  })
+                }
+              >
+                <View style={styles.reportHeaderRow}>
+                  <View style={styles.reportTitleRow}>
+                    <View style={styles.reportIconCircle}>
+                      {item.icon === "monitor" ? (
+                        <Feather name="monitor" size={16} color="#1E5BFF" />
+                      ) : (
+                        <Feather name="tool" size={16} color="#F97316" />
+                      )}
                     </View>
-                    <View style={styles.reportMetaItem}>
-                      <Feather name="calendar" size={12} color="#6B7280" />
-                      <Text style={styles.reportMetaText}>{item.date}</Text>
-                    </View>
+                    <Text style={styles.reportTitle} numberOfLines={1}>
+                      {item.title}
+                    </Text>
                   </View>
+                  <Feather name="chevron-right" size={18} color="#9CA3AF" />
+                </View>
 
-                  <View
-                    style={[
-                      styles.priorityBadge,
-                      {
-                        backgroundColor:
-                          item.priority === "critical"
-                            ? "#FEF2F2"
-                            : item.priority === "high"
-                              ? "#FFF7ED"
-                              : item.priority === "medium"
-                                ? "#EFF6FF"
-                                : "#F0FDF4",
-                        borderColor:
-                          item.priority === "critical"
-                            ? "#EF4444"
-                            : item.priority === "high"
-                              ? "#F97316"
-                              : item.priority === "medium"
-                                ? "#3B82F6"
-                                : "#22C55E",
-                      },
-                    ]}
-                  >
-                    <Text
+                <Text style={styles.reportDescription} numberOfLines={3}>
+                  {item.description}
+                </Text>
+
+                <View style={styles.reportFooterRow}>
+                  <View style={styles.reportMetaRow}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 12,
+                      }}
+                    >
+                      <View style={styles.reportMetaItem}>
+                        <Feather name="user" size={12} color="#6B7280" />
+                        <Text style={styles.reportMetaText} numberOfLines={1}>
+                          {currentName}
+                        </Text>
+                      </View>
+                      <View style={styles.reportMetaItem}>
+                        <Feather name="calendar" size={12} color="#6B7280" />
+                        <Text style={styles.reportMetaText}>{item.date}</Text>
+                      </View>
+                    </View>
+
+                    <View
                       style={[
-                        styles.priorityBadgeText,
+                        styles.priorityBadge,
                         {
-                          color:
+                          backgroundColor:
                             item.priority === "critical"
-                              ? "#B91C1C"
+                              ? "#FEF2F2"
                               : item.priority === "high"
-                                ? "#C2410C"
+                                ? "#FFF7ED"
                                 : item.priority === "medium"
-                                  ? "#1D4ED8"
-                                  : "#15803D",
+                                  ? "#EFF6FF"
+                                  : "#F0FDF4",
+                          borderColor:
+                            item.priority === "critical"
+                              ? "#EF4444"
+                              : item.priority === "high"
+                                ? "#F97316"
+                                : item.priority === "medium"
+                                  ? "#3B82F6"
+                                  : "#22C55E",
                         },
                       ]}
                     >
-                      {formatPriorityLabel(item.priority)}
-                    </Text>
+                      <Text
+                        style={[
+                          styles.priorityBadgeText,
+                          {
+                            color:
+                              item.priority === "critical"
+                                ? "#B91C1C"
+                                : item.priority === "high"
+                                  ? "#C2410C"
+                                  : item.priority === "medium"
+                                    ? "#1D4ED8"
+                                    : "#15803D",
+                          },
+                        ]}
+                      >
+                        {formatPriorityLabel(item.priority)}
+                      </Text>
+                    </View>
                   </View>
                 </View>
-              </View>
-            </TouchableOpacity>
-          ))}
+              </TouchableOpacity>
+            ))
+          )}
 
           {/* space bawah */}
           <View style={{ height: 32 }} />
@@ -552,6 +599,32 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+  emptyCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  emptyTitle: {
+    marginTop: 12,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  emptySubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 20,
+    color: "#6B7280",
+    textAlign: "center",
+  },
   reportHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -598,11 +671,14 @@ const styles = StyleSheet.create({
   reportMetaItem: {
     flexDirection: "row",
     alignItems: "center",
+    flexShrink: 1,
+    maxWidth: "52%",
   },
   reportMetaText: {
     marginLeft: 4,
     fontSize: 11,
     color: "#6B7280",
+    flexShrink: 1,
   },
   priorityBadge: {
     paddingHorizontal: 6,

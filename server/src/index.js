@@ -6,12 +6,31 @@ const uploadRoutes = require("./routes/upload");
 
 const app = express();
 const port = Number(process.env.PORT || 8080);
-const corsOrigin = process.env.CORS_ORIGIN || "*";
 const host = process.env.HOST || "0.0.0.0";
+const defaultOrigins = [
+  "http://localhost:8081",
+  "http://127.0.0.1:8081",
+  "http://localhost:19006",
+  "http://127.0.0.1:19006",
+];
+
+const allowedOrigins = (process.env.CORS_ORIGIN || "")
+  .split(",")
+  .map((item) => item.trim())
+  .filter(Boolean);
+
+const corsOrigins = allowedOrigins.length > 0 ? allowedOrigins : defaultOrigins;
 
 app.use(
   cors({
-    origin: corsOrigin === "*" ? true : corsOrigin,
+    origin(origin, callback) {
+      if (!origin || corsOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error("Origin tidak diizinkan oleh konfigurasi CORS server."));
+    },
   }),
 );
 app.use(express.json({ limit: "10mb" }));
@@ -46,4 +65,5 @@ app.use((error, _req, res, _next) => {
 app.listen(port, host, () => {
   console.log(`UFIXED upload server berjalan di http://localhost:${port}`);
   console.log(`Akses LAN: http://192.168.1.20:${port}`);
+  console.log(`CORS origin aktif: ${corsOrigins.join(", ")}`);
 });

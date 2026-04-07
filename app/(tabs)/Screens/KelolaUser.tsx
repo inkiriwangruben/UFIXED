@@ -3,17 +3,19 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   collection,
-  addDoc,
   deleteDoc,
   doc,
   getDocs,
   onSnapshot,
   query,
+  serverTimestamp,
+  setDoc,
   where,
 } from "firebase/firestore";
 import { createUserWithEmailAndPassword, signOut } from "firebase/auth";
-import { db, secondaryAuth } from "@/lib/firebase";
 import {
+  ActivityIndicator,
+  Alert,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -23,25 +25,47 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  ActivityIndicator,
-  Alert,
 } from "react-native";
 
-type UserRole = "Department IT" | "Tukang" | "Business Office" | "Pelapor";
+import { db, secondaryAuth } from "@/lib/firebase";
+import {
+  ROLE_OPTIONS,
+  getRoleLabel,
+  type CanonicalUserRole,
+} from "@/lib/roles";
+import {
+  buildCanonicalUserProfileInput,
+  getDefaultNameFromEmail,
+  mapUserDocumentToProfile,
+} from "@/lib/user-profile";
 
 interface UserItem {
   id: string;
   name: string;
   email: string;
-  role: UserRole;
+  role: CanonicalUserRole;
 }
 
-const roleOptions: UserRole[] = [
-  "Pelapor",
-  "Department IT",
-  "Tukang",
-  "Business Office",
-];
+const MANAGEABLE_ROLE_OPTIONS = ROLE_OPTIONS.filter(
+  (role) => role.value !== "admin",
+);
+
+const HIDDEN_ROLES: CanonicalUserRole[] = ["admin"];
+
+const getRoleBadgeStyle = (role: CanonicalUserRole) => {
+  switch (role) {
+    case "admin":
+      return { backgroundColor: "#F3E8FF", textColor: "#7C3AED" };
+    case "department-it":
+      return { backgroundColor: "#DBEAFE", textColor: "#2563EB" };
+    case "tukang":
+      return { backgroundColor: "#FEF3C7", textColor: "#B45309" };
+    case "business-office":
+      return { backgroundColor: "#DCFCE7", textColor: "#15803D" };
+    default:
+      return { backgroundColor: "#E0E7FF", textColor: "#4338CA" };
+  }
+};
 
 const KelolaUserScreen: React.FC = () => {
   const router = useRouter();
@@ -50,31 +74,43 @@ const KelolaUserScreen: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserItem | null>(null);
+  const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [newRole, setNewRole] = useState<string>("");
+  const [newRole, setNewRole] = useState<CanonicalUserRole | "">("");
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [adding, setAdding] = useState(false);
 
-  // Fetch users from Firestore
   useEffect(() => {
     setLoading(true);
     const unsubscribe = onSnapshot(
       collection(db, "users"),
       (querySnapshot) => {
-        const usersData: UserItem[] = [];
+        const dedupedUsers = new Map<string, UserItem>();
 
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
-          usersData.push({
-            id: doc.id,
-            name: data.name || "",
-            email: data.email || "",
-            role: data.role || "Pelapor",
+        querySnapshot.forEach((snapshot) => {
+          const profile = mapUserDocumentToProfile(
+            snapshot.id,
+            snapshot.data() as Record<string, unknown>,
+          );
+
+          if (!profile) {
+            return;
+          }
+
+          dedupedUsers.set(profile.uid, {
+            id: profile.uid,
+            name: profile.name,
+            email: profile.email,
+            role: profile.role,
           });
         });
 
-        setUserList(usersData);
+        setUserList(
+          [...dedupedUsers.values()]
+            .filter((user) => !HIDDEN_ROLES.includes(user.role))
+            .sort((left, right) => left.email.localeCompare(right.email)),
+        );
         setLoading(false);
       },
       (error) => {
@@ -87,6 +123,14 @@ const KelolaUserScreen: React.FC = () => {
     return unsubscribe;
   }, []);
 
+  const resetAddForm = () => {
+    setNewName("");
+    setNewEmail("");
+    setNewPassword("");
+    setNewRole("");
+    setShowRoleMenu(false);
+  };
+
   const handleBack = () => {
     if (router.canGoBack()) {
       router.back();
@@ -96,6 +140,10 @@ const KelolaUserScreen: React.FC = () => {
   };
 
   const handleOpenDeleteModal = (user: UserItem) => {
+    if (user.role === "admin") {
+      return;
+    }
+
     setSelectedUser(user);
     setShowDeleteModal(true);
   };
@@ -110,13 +158,22 @@ const KelolaUserScreen: React.FC = () => {
       return;
     }
 
+    if (selectedUser.role === "admin") {
+      Alert.alert("Error", "Akun admin tidak bisa dihapus dari halaman ini");
+      handleCloseDeleteModal();
+      return;
+    }
+
     try {
       await deleteDoc(doc(db, "users", selectedUser.id));
-      Alert.alert("Berhasil", "Pengguna berhasil dihapus");
+      Alert.alert(
+        "Berhasil",
+        "Profil pengguna berhasil dihapus. Akses aplikasi untuk akun ini telah dicabut.",
+      );
       handleCloseDeleteModal();
     } catch (error) {
       console.error("Error deleting user:", error);
-      Alert.alert("Error", "Gagal menghapus pengguna");
+      Alert.alert("Error", "Gagal menghapus profil pengguna");
     }
   };
 
@@ -126,14 +183,24 @@ const KelolaUserScreen: React.FC = () => {
       return;
     }
 
-    // Validate email format
+    if (newRole === "pelapor" && !newName.trim()) {
+      Alert.alert("Error", "Nama pelapor wajib diisi");
+      return;
+    }
+
+    if (newRole === "admin") {
+      Alert.alert("Error", "Role admin tidak bisa dibuat dari halaman ini");
+      return;
+    }
+
+    const normalizedEmail = newEmail.trim().toLowerCase();
+    const normalizedName = newName.trim();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(newEmail.trim())) {
+    if (!emailRegex.test(normalizedEmail)) {
       Alert.alert("Error", "Format email tidak valid");
       return;
     }
 
-    // Validate password length
     if (newPassword.length < 6) {
       Alert.alert("Error", "Password minimal 6 karakter");
       return;
@@ -142,10 +209,9 @@ const KelolaUserScreen: React.FC = () => {
     try {
       setAdding(true);
 
-      // Check if email already exists in Firestore first
       const emailQuery = query(
         collection(db, "users"),
-        where("email", "==", newEmail.trim()),
+        where("email", "==", normalizedEmail),
       );
       const emailSnapshot = await getDocs(emailQuery);
 
@@ -154,37 +220,38 @@ const KelolaUserScreen: React.FC = () => {
         return;
       }
 
-      // Create user in Firebase Authentication
       const userCredential = await createUserWithEmailAndPassword(
         secondaryAuth,
-        newEmail.trim(),
+        normalizedEmail,
         newPassword,
       );
       const uid = userCredential.user.uid;
-
-      // Save user data to Firestore with UID
-      await addDoc(collection(db, "users"), {
-        uid: uid,
-        name: newEmail.split("@")[0], // Use email prefix as name
-        email: newEmail.trim(),
+      const profile = buildCanonicalUserProfileInput({
+        uid,
+        email: normalizedEmail,
+        name:
+          newRole === "pelapor"
+            ? normalizedName
+            : getDefaultNameFromEmail(normalizedEmail),
         role: newRole,
-        createdAt: new Date(),
+      });
+
+      await setDoc(doc(db, "users", uid), {
+        ...profile,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
 
       await signOut(secondaryAuth);
 
-      setNewEmail("");
-      setNewPassword("");
-      setNewRole("");
-      setShowRoleMenu(false);
+      resetAddForm();
       setShowAddModal(false);
       Alert.alert("Berhasil", "Pengguna berhasil ditambahkan");
     } catch (error: any) {
       console.error("Error adding user:", error);
       let errorMessage = "Gagal menambahkan pengguna";
 
-      // Handle Firebase Auth errors
-      if (error && error.code) {
+      if (error?.code) {
         switch (error.code) {
           case "auth/email-already-in-use":
             errorMessage = "Email sudah digunakan oleh akun lain";
@@ -199,11 +266,11 @@ const KelolaUserScreen: React.FC = () => {
             errorMessage = "Pendaftaran akun dinonaktifkan";
             break;
           default:
-            errorMessage = `Error: ${error.message || "Terjadi kesalahan tidak dikenal"}`;
+            errorMessage = error.message || errorMessage;
             break;
         }
-      } else if (error && error.message) {
-        errorMessage = `Error: ${error.message}`;
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
       }
 
       Alert.alert("Error", errorMessage);
@@ -253,38 +320,64 @@ const KelolaUserScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* List User */}
-        {userList.map((user) => {
-          return (
-            <View key={user.id} style={styles.userCard}>
-              <View style={styles.userLeft}>
-                <View style={styles.userAvatar}>
-                  <Feather name="user" size={20} color="#9CA3AF" />
-                </View>
-                <View style={styles.userInfo}>
-                  <Text style={styles.userName}>{user.name}</Text>
-                  <View style={styles.userEmailRow}>
-                    <Feather
-                      name="mail"
-                      size={14}
-                      color="#6B7280"
-                      style={{ marginRight: 4 }}
-                    />
-                    <Text style={styles.userEmail}>{user.email}</Text>
+        {userList.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Feather name="users" size={28} color="#9CA3AF" />
+            <Text style={styles.emptyTitle}>Belum ada user demo</Text>
+            <Text style={styles.emptySubtitle}>
+              Tambahkan akun terlebih dahulu agar login per role bisa diuji.
+            </Text>
+          </View>
+        ) : (
+          userList.map((user) => {
+            const badgeStyle = getRoleBadgeStyle(user.role);
+
+            return (
+              <View key={user.id} style={styles.userCard}>
+                <View style={styles.userLeft}>
+                  <View style={styles.userAvatar}>
+                    <Feather name="user" size={20} color="#9CA3AF" />
+                  </View>
+                  <View style={styles.userInfo}>
+                    <Text style={styles.userName}>{user.name}</Text>
+                    <View style={styles.userEmailRow}>
+                      <Feather
+                        name="mail"
+                        size={14}
+                        color="#6B7280"
+                        style={{ marginRight: 4 }}
+                      />
+                      <Text style={styles.userEmail}>{user.email}</Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.roleBadge,
+                        { backgroundColor: badgeStyle.backgroundColor },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.roleBadgeText,
+                          { color: badgeStyle.textColor },
+                        ]}
+                      >
+                        {getRoleLabel(user.role)}
+                      </Text>
+                    </View>
                   </View>
                 </View>
-              </View>
 
-              <TouchableOpacity
-                style={styles.deleteButton}
-                activeOpacity={0.9}
-                onPress={() => handleOpenDeleteModal(user)}
-              >
-                <Feather name="trash-2" size={18} color="#EF4444" />
-              </TouchableOpacity>
-            </View>
-          );
-        })}
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  activeOpacity={0.9}
+                  onPress={() => handleOpenDeleteModal(user)}
+                >
+                  <Feather name="trash-2" size={18} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
+            );
+          })
+        )}
 
         <View style={{ height: 32 }} />
       </ScrollView>
@@ -294,6 +387,20 @@ const KelolaUserScreen: React.FC = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Tambah User Baru</Text>
+
+            {newRole === "pelapor" ? (
+              <View style={styles.modalFieldGroup}>
+                <Text style={styles.modalLabel}>Nama</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Masukkan nama pelapor"
+                  placeholderTextColor="#9CA3AF"
+                  autoCapitalize="words"
+                  value={newName}
+                  onChangeText={setNewName}
+                />
+              </View>
+            ) : null}
 
             <View style={styles.modalFieldGroup}>
               <Text style={styles.modalLabel}>Email</Text>
@@ -334,24 +441,27 @@ const KelolaUserScreen: React.FC = () => {
                       !newRole && { color: "#9CA3AF" },
                     ]}
                   >
-                    {newRole || "Pilih role user"}
+                    {newRole ? getRoleLabel(newRole) : "Pilih role user"}
                   </Text>
                   <Feather name="chevron-down" size={18} color="#9CA3AF" />
                 </TouchableOpacity>
 
                 {showRoleMenu && (
                   <View style={styles.roleMenu}>
-                    {roleOptions.map((role) => (
+                    {MANAGEABLE_ROLE_OPTIONS.map((role) => (
                       <TouchableOpacity
-                        key={role}
+                        key={role.value}
                         style={styles.roleMenuItem}
                         activeOpacity={0.8}
                         onPress={() => {
-                          setNewRole(role);
+                          setNewRole(role.value);
+                          if (role.value !== "pelapor") {
+                            setNewName("");
+                          }
                           setShowRoleMenu(false);
                         }}
                       >
-                        <Text style={styles.roleMenuItemText}>{role}</Text>
+                        <Text style={styles.roleMenuItemText}>{role.label}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -365,10 +475,7 @@ const KelolaUserScreen: React.FC = () => {
                 activeOpacity={0.8}
                 onPress={() => {
                   setShowAddModal(false);
-                  setNewEmail("");
-                  setNewPassword("");
-                  setNewRole("");
-                  setShowRoleMenu(false);
+                  resetAddForm();
                 }}
               >
                 <Text style={styles.modalButtonCancelText}>Batal</Text>
@@ -548,6 +655,33 @@ const styles = StyleSheet.create({
   roleBadgeText: {
     fontSize: 11,
     fontWeight: "600",
+  },
+  emptyCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 22,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  emptyTitle: {
+    marginTop: 12,
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  emptySubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 20,
+    color: "#6B7280",
+    textAlign: "center",
   },
   deleteButton: {
     padding: 8,

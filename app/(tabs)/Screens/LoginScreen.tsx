@@ -1,10 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
-import { signInWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import {
   Alert,
   SafeAreaView,
@@ -16,120 +14,133 @@ import {
   View,
 } from "react-native";
 
-const LoginScreen: React.FC = () => {
-  type RoleOption =
-    | "Pelapor (Mahasiswa/Dosen/Staf)"
-    | "Admin"
-    | "Department IT"
-    | "Tukang"
-    | "Business Office";
+import { auth } from "@/lib/firebase";
+import {
+  LOGIN_ROLE_OPTIONS,
+  getDashboardRouteByRole,
+  getLoginRoleLabel,
+  type CanonicalUserRole,
+} from "@/lib/roles";
+import { signOutCurrentUser } from "@/lib/session";
+import { getUserProfileByUid } from "@/lib/user-profile";
 
+const getInlineLoginError = (error: unknown) => {
+  const errorCode =
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+      ? error.code
+      : "";
+
+  if (
+    errorCode === "auth/invalid-credential" ||
+    errorCode === "auth/wrong-password" ||
+    errorCode === "auth/user-not-found" ||
+    errorCode === "auth/invalid-email"
+  ) {
+    return "Email atau kata sandi anda salah!";
+  }
+
+  return "";
+};
+
+const LoginScreen: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [selectedRole, setSelectedRole] = useState<RoleOption>(
-    "Pelapor (Mahasiswa/Dosen/Staf)",
-  );
+  const [selectedRole, setSelectedRole] =
+    useState<CanonicalUserRole>("pelapor");
   const [roleModalVisible, setRoleModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loginError, setLoginError] = useState("");
 
   const router = useRouter();
 
-  const getUserRoleAndRedirect = useCallback(
-    async (uid: string, userEmail?: string) => {
-      try {
-        console.log("Getting user role for UID:", uid, "Email:", userEmail);
+  useEffect(() => {
+    let isMounted = true;
 
-        // Special case for admin - check if email contains 'admin' or is a known admin email
-        if (
-          userEmail &&
-          (userEmail.toLowerCase().includes("admin") ||
-            userEmail === "admin@university.ac.id")
-        ) {
-          console.log("Admin user detected, redirecting to DashboardAdmin");
-          router.replace("/(tabs)/Screens/DashboardAdmin");
+    const redirectAuthenticatedUser = async () => {
+      if (!auth.currentUser) {
+        return;
+      }
+
+      try {
+        const profile = await getUserProfileByUid(auth.currentUser.uid);
+
+        if (!isMounted) {
           return;
         }
 
-        // First try to find by UID
-        let q = query(collection(db, "users"), where("uid", "==", uid));
-        let querySnapshot = await getDocs(q);
-
-        // If not found by UID, try by email (for legacy users)
-        if (querySnapshot.empty && userEmail) {
-          console.log("User not found by UID, trying by email");
-          q = query(collection(db, "users"), where("email", "==", userEmail));
-          querySnapshot = await getDocs(q);
+        if (!profile) {
+          await signOutCurrentUser();
+          Alert.alert(
+            "Akun tidak valid",
+            "Data role akun tidak ditemukan atau belum lengkap. Silakan hubungi admin.",
+          );
+          return;
         }
 
-        console.log("Query snapshot size:", querySnapshot.size);
-
-        if (!querySnapshot.empty) {
-          const userData = querySnapshot.docs[0].data();
-          const role = userData.role;
-          console.log("User role found:", role);
-
-          switch (role) {
-            case "Pelapor":
-              router.replace("/(tabs)/Screens/DashboardPelapor");
-              break;
-            case "Admin":
-              router.replace("/(tabs)/Screens/DashboardAdmin");
-              break;
-            case "Department IT":
-              router.replace("/(tabs)/Screens/DashboardDepartmentIT");
-              break;
-            case "Tukang":
-              router.replace("/(tabs)/Screens/DashboardTukang");
-              break;
-            case "Business Office":
-              router.replace("/(tabs)/Screens/DashboardBusinessOffice");
-              break;
-            default:
-              router.replace("/(tabs)/Screens/DashboardPelapor");
-              break;
-          }
-        } else {
-          router.replace("/(tabs)/Screens/DashboardPelapor");
-        }
+        router.replace(getDashboardRouteByRole(profile.role));
       } catch (error) {
-        console.error("Error getting user role:", error);
-        Alert.alert("Error", "Gagal mendapatkan data pengguna");
-        router.replace("/(tabs)/Screens/LoginScreen");
-      }
-    },
-    [router],
-  );
+        console.error("Error checking login session:", error);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        getUserRoleAndRedirect(user.uid, user.email || undefined);
+        if (isMounted) {
+          Alert.alert(
+            "Gagal memuat sesi",
+            "Terjadi masalah saat membaca profil user. Silakan login kembali.",
+          );
+        }
       }
-    });
+    };
 
-    return unsubscribe;
-  }, [getUserRoleAndRedirect]);
+    void redirectAuthenticatedUser();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router]);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert("Error", "Email dan password wajib diisi");
+      setLoginError("Email dan password wajib diisi");
       return;
     }
 
     try {
       setLoading(true);
+      setLoginError("");
+      const normalizedEmail = email.trim().toLowerCase();
       const userCredential = await signInWithEmailAndPassword(
         auth,
-        email.trim(),
+        normalizedEmail,
         password,
       );
-      Alert.alert("Berhasil", "Login berhasil");
-      // Redirect will be handled by onAuthStateChanged, but let's also call it here for immediate effect
-      getUserRoleAndRedirect(
-        userCredential.user.uid,
-        userCredential.user.email || undefined,
-      );
+      const profile = await getUserProfileByUid(userCredential.user.uid);
+
+      if (!profile) {
+        await signOutCurrentUser();
+        Alert.alert(
+          "Akun tidak valid",
+          "Data role akun tidak ditemukan atau belum lengkap. Silakan hubungi admin.",
+        );
+        return;
+      }
+
+      if (profile.role !== selectedRole) {
+        setLoginError("");
+        await signOutCurrentUser();
+        return;
+      }
+
+      router.replace(getDashboardRouteByRole(profile.role));
     } catch (error) {
+      const inlineError = getInlineLoginError(error);
+
+      if (inlineError) {
+        setLoginError(inlineError);
+        return;
+      }
+
       const message =
         error instanceof Error ? error.message : "Login gagal. Coba lagi.";
       Alert.alert("Login gagal", message);
@@ -173,7 +184,9 @@ const LoginScreen: React.FC = () => {
                   ]}
                   onPress={handleSelectRole}
                 >
-                  <Text style={styles.roleText}>{selectedRole}</Text>
+                  <Text style={styles.roleText}>
+                    {getLoginRoleLabel(selectedRole)}
+                  </Text>
                   <Feather name="chevron-right" size={20} color="#9CA3AF" />
                 </TouchableOpacity>
                 {roleModalVisible && (
@@ -183,26 +196,19 @@ const LoginScreen: React.FC = () => {
                       nestedScrollEnabled
                       showsVerticalScrollIndicator={false}
                     >
-                      {(
-                        [
-                          "Pelapor (Mahasiswa/Dosen/Staf)",
-                          "Admin",
-                          "Department IT",
-                          "Tukang",
-                          "Business Office",
-                        ] as RoleOption[]
-                      ).map((role) => {
-                        const isActive = role === selectedRole;
+                      {LOGIN_ROLE_OPTIONS.map((role) => {
+                        const isActive = role.value === selectedRole;
                         return (
                           <TouchableOpacity
-                            key={role}
+                            key={role.value}
                             activeOpacity={0.8}
                             style={[
                               styles.roleOptionRow,
                               isActive && styles.roleOptionRowActive,
                             ]}
                             onPress={() => {
-                              setSelectedRole(role);
+                              setSelectedRole(role.value);
+                              setLoginError("");
                               setRoleModalVisible(false);
                             }}
                           >
@@ -212,7 +218,7 @@ const LoginScreen: React.FC = () => {
                                 isActive && styles.roleOptionTextActive,
                               ]}
                             >
-                              {role}
+                              {role.label}
                             </Text>
                           </TouchableOpacity>
                         );
@@ -236,7 +242,12 @@ const LoginScreen: React.FC = () => {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(value) => {
+                    setEmail(value);
+                    if (loginError) {
+                      setLoginError("");
+                    }
+                  }}
                 />
               </View>
             </View>
@@ -253,9 +264,17 @@ const LoginScreen: React.FC = () => {
                   placeholderTextColor="#9CA3AF"
                   secureTextEntry
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(value) => {
+                    setPassword(value);
+                    if (loginError) {
+                      setLoginError("");
+                    }
+                  }}
                 />
               </View>
+              {loginError ? (
+                <Text style={styles.errorText}>{loginError}</Text>
+              ) : null}
             </View>
 
             <TouchableOpacity
@@ -443,6 +462,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#FFFFFF",
+  },
+  errorText: {
+    marginTop: 6,
+    marginLeft: 2,
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#EF4444",
   },
 });
 

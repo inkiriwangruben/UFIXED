@@ -24,6 +24,10 @@ import {
 } from "react-native";
 import { auth, db } from "@/lib/firebase";
 import { getWorkflowDefaults } from "@/app/utils/workflow";
+import {
+  getDefaultNameFromEmail,
+  getUserProfileByUid,
+} from "@/lib/user-profile";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -59,21 +63,51 @@ const FormLaporan: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [photos, setPhotos] = useState<LocalPhoto[]>([]);
   const [photoPickerVisible, setPhotoPickerVisible] = useState(false);
+  const [successModalVisible, setSuccessModalVisible] = useState(false);
   const [currentUser, setCurrentUser] = useState<{
     uid: string;
     email: string | null;
+    name: string;
   } | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     const unsub = onAuthStateChanged(auth, (user) => {
       if (user) {
-        setCurrentUser({ uid: user.uid, email: user.email });
+        const fallbackName =
+          user.displayName?.trim() ||
+          getDefaultNameFromEmail(user.email || "user@local");
+        setCurrentUser({
+          uid: user.uid,
+          email: user.email,
+          name: fallbackName,
+        });
+
+        void (async () => {
+          try {
+            const profile = await getUserProfileByUid(user.uid);
+
+            if (isMounted && profile?.name) {
+              setCurrentUser({
+                uid: user.uid,
+                email: user.email,
+                name: profile.name,
+              });
+            }
+          } catch (error) {
+            console.error("Error loading current pelapor profile:", error);
+          }
+        })();
       } else {
         setCurrentUser(null);
       }
     });
 
-    return unsub;
+    return () => {
+      isMounted = false;
+      unsub();
+    };
   }, []);
 
   const handleBack = () => {
@@ -295,21 +329,19 @@ const FormLaporan: React.FC = () => {
         unitTarget: workflowDefaults.unitTarget,
         authorUid: currentUser.uid,
         authorEmail: currentUser.email,
-        author: currentUser.email || "User",
+        author: currentUser.name || "User",
+        authorName: currentUser.name || "User",
         photos: uploadedPhotos,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
 
-      Alert.alert(
-        "Laporan terkirim",
-        "Data laporan berhasil disimpan ke Firestore.",
-      );
       setKategori("IT");
       setPriority("medium");
       setJudul("");
       setDeskripsi("");
       setPhotos([]);
+      setSuccessModalVisible(true);
     } catch (error) {
       const message =
         error instanceof Error
@@ -383,6 +415,28 @@ const FormLaporan: React.FC = () => {
               onPress={() => setPhotoPickerVisible(false)}
             >
               <Text style={styles.modalCancelText}>Batal</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        transparent
+        animationType="fade"
+        visible={successModalVisible}
+        onRequestClose={() => setSuccessModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.successModalCard}>
+            <View style={styles.successIconWrap}>
+              <Feather name="check" size={28} color="#FFFFFF" />
+            </View>
+            <Text style={styles.successTitle}>Laporan terkirim</Text>
+            <TouchableOpacity
+              style={styles.successButton}
+              onPress={() => setSuccessModalVisible(false)}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.successButtonText}>OK</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -693,6 +747,53 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#6B7280",
+  },
+  successModalCard: {
+    width: "100%",
+    maxWidth: 300,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    alignItems: "center",
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: {
+      width: 0,
+      height: 12,
+    },
+    elevation: 10,
+  },
+  successIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#2563EB",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 18,
+  },
+  successTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#111827",
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  successButton: {
+    minWidth: 128,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: "#2563EB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  successButtonText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
   scrollContent: {
     flexGrow: 1,
