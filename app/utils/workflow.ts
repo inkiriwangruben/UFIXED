@@ -42,6 +42,13 @@ export interface WorkflowReport {
   rejectionReason?: string;
   rejectedByRole?: string;
   photos: ReportPhoto[];
+  createdAtValue?: number | null;
+  approvedByAdminAtValue?: number | null;
+  approvedByUnitAtValue?: number | null;
+  approvedByBusinessOfficeAtValue?: number | null;
+  repairStartedAtValue?: number | null;
+  completedAtValue?: number | null;
+  updatedAtValue?: number | null;
 }
 
 export const getUnitTargetFromKategori = (kategori: Kategori): UnitTarget =>
@@ -56,6 +63,33 @@ export const getWorkflowDefaults = (kategori: Kategori) => ({
   workflowState: "submitted" as WorkflowState,
   unitTarget: getUnitTargetFromKategori(kategori),
 });
+
+const getDateFromTimestamp = (value: any): Date | null => {
+  const maybeDate =
+    typeof value?.toDate === "function"
+      ? value.toDate()
+      : value instanceof Date
+        ? value
+        : null;
+
+  return maybeDate instanceof Date && !Number.isNaN(maybeDate.getTime())
+    ? maybeDate
+    : null;
+};
+
+export const formatTimelineDate = (value?: number | null) => {
+  if (!value) {
+    return "-";
+  }
+
+  return new Date(value).toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
 
 const normalizeLegacyWorkflow = (
   data: Record<string, any>,
@@ -109,6 +143,15 @@ export const normalizeWorkflowReport = (
   const status = (data.status as string) || legacy.status;
   const unitTarget =
     (data.unitTarget as UnitTarget) || getUnitTargetFromKategori(kategori);
+  const createdAt = getDateFromTimestamp(data.createdAt);
+  const approvedByAdminAt = getDateFromTimestamp(data.approvedByAdminAt);
+  const approvedByUnitAt = getDateFromTimestamp(data.approvedByUnitAt);
+  const approvedByBusinessOfficeAt = getDateFromTimestamp(
+    data.approvedByBusinessOfficeAt,
+  );
+  const repairStartedAt = getDateFromTimestamp(data.repairStartedAt);
+  const completedAt = getDateFromTimestamp(data.completedAt);
+  const updatedAt = getDateFromTimestamp(data.updatedAt);
 
   return {
     id,
@@ -118,9 +161,9 @@ export const normalizeWorkflowReport = (
     priority: (data.priority as Priority) || "medium",
     icon: kategori === "IT" ? "monitor" : "tools",
     author:
-      data.author || data.authorName || data.authorEmail || data.email || "Unknown",
+      data.authorName || data.author || data.authorEmail || data.email || "Unknown",
     authorUid: data.authorUid,
-    date: data.createdAt?.toDate?.()?.toLocaleDateString("id-ID") || "",
+    date: createdAt?.toLocaleDateString("id-ID") || "",
     status,
     workflowStage,
     workflowState,
@@ -130,6 +173,14 @@ export const normalizeWorkflowReport = (
     photos: Array.isArray(data.photos)
       ? data.photos.filter((photo: ReportPhoto | null | undefined) => photo?.url)
       : [],
+    createdAtValue: createdAt?.getTime() ?? null,
+    approvedByAdminAtValue: approvedByAdminAt?.getTime() ?? null,
+    approvedByUnitAtValue: approvedByUnitAt?.getTime() ?? null,
+    approvedByBusinessOfficeAtValue:
+      approvedByBusinessOfficeAt?.getTime() ?? null,
+    repairStartedAtValue: repairStartedAt?.getTime() ?? null,
+    completedAtValue: completedAt?.getTime() ?? null,
+    updatedAtValue: updatedAt?.getTime() ?? null,
   };
 };
 

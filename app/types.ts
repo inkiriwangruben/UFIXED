@@ -1,4 +1,6 @@
-export type UserRole = 'pelapor' | 'admin' | 'it' | 'tukang' | 'business-office';
+import type { CanonicalUserRole } from "@/lib/roles";
+
+export type UserRole = CanonicalUserRole;
 
 export interface User {
   id: string;

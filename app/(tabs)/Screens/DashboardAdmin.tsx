@@ -10,6 +10,8 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { createNotification } from "@/lib/notifications";
+import { LOGIN_ROUTE, signOutCurrentUser } from "@/lib/session";
+import { resolveReportAuthorName } from "@/lib/user-profile";
 import { formatPriorityLabel } from "@/app/utils/priority";
 import {
   getUnitLabel,
@@ -62,44 +64,56 @@ const DashboardAdmin: React.FC = () => {
 
   // Fetch reports from Firestore
   useEffect(() => {
+    let isActive = true;
     setLoading(true);
     const unsubscribe = onSnapshot(
       collection(db, "laporan"),
       (querySnapshot) => {
-        const reports: AdminLaporan[] = [];
+        void (async () => {
+          const reports = await Promise.all(
+            querySnapshot.docs.map(async (reportDoc) => {
+              const data = normalizeWorkflowReport(reportDoc.id, reportDoc.data());
 
-        querySnapshot.forEach((doc) => {
-          const data = normalizeWorkflowReport(doc.id, doc.data());
-          reports.push({
-            id: data.id,
-            title: data.title,
-            description: data.description,
-            status: data.workflowStage === "admin_review" ? "pending" : "verifikasi",
-            priority: data.priority,
-            icon: data.icon,
-            date: data.date,
-            author: data.author || "Unknown",
-            authorUid: data.authorUid,
-            workflowStage: data.workflowStage,
-            workflowState: data.workflowState,
-            unitTarget: data.unitTarget,
-            rejectReason: data.rejectionReason,
-          });
-        });
+              return {
+                id: data.id,
+                title: data.title,
+                description: data.description,
+                status:
+                  data.workflowStage === "admin_review" ? "pending" : "verifikasi",
+                priority: data.priority,
+                icon: data.icon,
+                date: data.date,
+                author: await resolveReportAuthorName({
+                  author: data.author,
+                  authorUid: data.authorUid,
+                }),
+                authorUid: data.authorUid,
+                workflowStage: data.workflowStage,
+                workflowState: data.workflowState,
+                unitTarget: data.unitTarget,
+                rejectReason: data.rejectionReason,
+              } satisfies AdminLaporan;
+            }),
+          );
 
-        setLaporanList(
-          reports.filter((item) =>
-            [
-              "admin_review",
-              "unit_review",
-              "business_office_review",
-              "unit_repair",
-              "done",
-              "rejected",
-            ].includes(item.workflowStage),
-          ),
-        );
-        setLoading(false);
+          if (!isActive) {
+            return;
+          }
+
+          setLaporanList(
+            reports.filter((item) =>
+              [
+                "admin_review",
+                "unit_review",
+                "business_office_review",
+                "unit_repair",
+                "done",
+                "rejected",
+              ].includes(item.workflowStage),
+            ),
+          );
+          setLoading(false);
+        })();
       },
       (error) => {
         console.error("Error fetching reports:", error);
@@ -108,7 +122,10 @@ const DashboardAdmin: React.FC = () => {
       },
     );
 
-    return unsubscribe;
+    return () => {
+      isActive = false;
+      unsubscribe();
+    };
   }, []);
 
   const visibleLaporan = useMemo(
@@ -138,6 +155,16 @@ const DashboardAdmin: React.FC = () => {
     }),
     [visibleLaporan],
   );
+
+  const handleLogout = async () => {
+    try {
+      await signOutCurrentUser();
+    } catch (error) {
+      console.error("Error signing out admin:", error);
+    } finally {
+      router.replace(LOGIN_ROUTE);
+    }
+  };
 
   const handleAcceptReport = async (id: string) => {
     try {
@@ -271,7 +298,7 @@ const DashboardAdmin: React.FC = () => {
           <View style={styles.headerTopRow}>
             <TouchableOpacity
               style={styles.backButton}
-              onPress={() => router.replace("/(tabs)/Screens/LoginScreen")}
+              onPress={handleLogout}
             >
               <Feather name="arrow-left" size={28} color="#FFFFFF" />
             </TouchableOpacity>
@@ -531,13 +558,15 @@ const DashboardAdmin: React.FC = () => {
 
             <View style={styles.modalActionRow}>
               <TouchableOpacity
-                style={[
-                  styles.modalRejectButton,
-                  isRejectDisabled && styles.modalRejectButtonDisabled,
-                ]}
-                activeOpacity={0.9}
-                onPress={handleSubmitRejectReason}
-                disabled={isRejectDisabled || updating}
+                style={styles.modalRejectButton}
+                activeOpacity={isRejectDisabled || updating ? 1 : 0.9}
+                onPress={() => {
+                  if (isRejectDisabled || updating) {
+                    return;
+                  }
+
+                  void handleSubmitRejectReason();
+                }}
               >
                 <Feather name="x-circle" size={14} color="#FFFFFF" />
                 <Text style={styles.modalActionText}>Tolak</Text>
@@ -878,9 +907,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexDirection: "row",
     gap: 6,
-  },
-  modalRejectButtonDisabled: {
-    backgroundColor: "#EF4444",
   },
   modalCancelButton: {
     flex: 1,

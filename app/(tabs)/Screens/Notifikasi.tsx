@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { db, auth } from "@/lib/firebase";
+import { LOGIN_ROUTE } from "@/lib/session";
 import {
   Platform,
   SafeAreaView,
@@ -48,7 +49,7 @@ const NotifikasiScreen: React.FC = () => {
       } else {
         setCurrentUser(null);
         setLoading(false);
-        router.replace("/(tabs)/Screens/LoginScreen");
+        router.replace(LOGIN_ROUTE);
       }
 
       setAuthResolved(true);
@@ -169,38 +170,48 @@ const NotifikasiScreen: React.FC = () => {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       >
-        {notifications.map((item, index) => {
-          const stylesStatus = getStatusStyle(item.status);
-          return (
-            <View
-              key={item.id}
-              style={[
-                styles.card,
-                { borderColor: stylesStatus.borderColor },
-                index === 0 && styles.cardFirst,
-              ]}
-            >
-              <View style={styles.cardHeader}>
-                <View style={styles.statusIconWrapper}>
-                  <MaterialCommunityIcons
-                    name={stylesStatus.iconName as any}
-                    size={20}
-                    color={stylesStatus.iconColor}
-                  />
+        {notifications.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Feather name="bell-off" size={28} color="#9CA3AF" />
+            <Text style={styles.emptyTitle}>Belum ada notifikasi</Text>
+            <Text style={styles.emptySubtitle}>
+              Notifikasi dari proses laporan akan tampil di sini.
+            </Text>
+          </View>
+        ) : (
+          notifications.map((item, index) => {
+            const stylesStatus = getStatusStyle(item.status);
+            return (
+              <View
+                key={item.id}
+                style={[
+                  styles.card,
+                  { borderColor: stylesStatus.borderColor },
+                  index === 0 && styles.cardFirst,
+                ]}
+              >
+                <View style={styles.cardHeader}>
+                  <View style={styles.statusIconWrapper}>
+                    <MaterialCommunityIcons
+                      name={stylesStatus.iconName as any}
+                      size={20}
+                      color={stylesStatus.iconColor}
+                    />
+                  </View>
+                  <View style={styles.cardTitleWrap}>
+                    <Text style={styles.cardTitle}>{item.title}</Text>
+                    <Text style={styles.cardTime}>
+                      {item.date}, {item.time}
+                    </Text>
+                  </View>
+                  {index < jumlahBaru && <View style={styles.unreadDot} />}
                 </View>
-                <View style={styles.cardTitleWrap}>
-                  <Text style={styles.cardTitle}>{item.title}</Text>
-                  <Text style={styles.cardTime}>
-                    {item.date}, {item.time}
-                  </Text>
-                </View>
-                {index < jumlahBaru && <View style={styles.unreadDot} />}
-              </View>
 
-              <Text style={styles.cardDescription}>{item.description}</Text>
-            </View>
-          );
-        })}
+                <Text style={styles.cardDescription}>{item.description}</Text>
+              </View>
+            );
+          })
+        )}
 
         <View style={{ height: 24 }} />
       </ScrollView>
@@ -272,6 +283,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 12,
+  },
+  emptyCard: {
+    marginTop: 6,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitle: {
+    marginTop: 12,
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  emptySubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 20,
+    color: "#6B7280",
+    textAlign: "center",
   },
   card: {
     backgroundColor: "#FFFFFF",

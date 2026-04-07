@@ -10,6 +10,8 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { createNotification } from "@/lib/notifications";
+import { LOGIN_ROUTE, signOutCurrentUser } from "@/lib/session";
+import { resolveReportAuthorName } from "@/lib/user-profile";
 import { formatPriorityLabel } from "@/app/utils/priority";
 import {
   normalizeWorkflowReport,
@@ -57,42 +59,58 @@ const DashboardTukang: React.FC = () => {
   const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
+    let isActive = true;
     setLoading(true);
     const unsubscribe = onSnapshot(
       collection(db, "laporan"),
       (querySnapshot) => {
-        const reports: TukangReport[] = [];
+        void (async () => {
+          const reports = (
+            await Promise.all(
+              querySnapshot.docs.map(async (reportDoc) => {
+                const data = normalizeWorkflowReport(reportDoc.id, reportDoc.data());
 
-        querySnapshot.forEach((doc) => {
-          const data = normalizeWorkflowReport(doc.id, doc.data());
-          if (
-            data.unitTarget !== "tukang" ||
-            ![
-              "unit_review",
-              "business_office_review",
-              "unit_repair",
-              "done",
-            ].includes(data.workflowStage)
-          ) {
+                if (
+                  data.unitTarget !== "tukang" ||
+                  ![
+                    "unit_review",
+                    "business_office_review",
+                    "unit_repair",
+                    "done",
+                  ].includes(data.workflowStage)
+                ) {
+                  return null;
+                }
+
+                return {
+                  id: data.id,
+                  title: data.title,
+                  description: data.description,
+                  tabStatus: data.workflowStage === "done" ? "selesai" : "proses",
+                  priority: data.priority || "medium",
+                  icon: "tools",
+                  date: data.date,
+                  author: await resolveReportAuthorName({
+                    author: data.author,
+                    authorUid: data.authorUid,
+                  }),
+                  authorUid: data.authorUid,
+                  workflowStage: data.workflowStage,
+                  workflowState: data.workflowState,
+                } as TukangReport;
+              }),
+            )
+          ).filter(
+            (item): item is TukangReport => item !== null,
+          );
+
+          if (!isActive) {
             return;
           }
-          reports.push({
-            id: data.id,
-            title: data.title,
-            description: data.description,
-            tabStatus: data.workflowStage === "done" ? "selesai" : "proses",
-            priority: data.priority || "medium",
-            icon: "tools",
-            date: data.date,
-            author: data.author || "",
-            authorUid: data.authorUid,
-            workflowStage: data.workflowStage,
-            workflowState: data.workflowState,
-          });
-        });
 
-        setLaporanList(reports);
-        setLoading(false);
+          setLaporanList(reports);
+          setLoading(false);
+        })();
       },
       (error) => {
         console.error("Error fetching reports:", error);
@@ -101,7 +119,10 @@ const DashboardTukang: React.FC = () => {
       },
     );
 
-    return unsubscribe;
+    return () => {
+      isActive = false;
+      unsubscribe();
+    };
   }, []);
 
   const visibleLaporan = useMemo(
@@ -127,6 +148,16 @@ const DashboardTukang: React.FC = () => {
     }),
     [visibleLaporan],
   );
+
+  const handleLogout = async () => {
+    try {
+      await signOutCurrentUser();
+    } catch (error) {
+      console.error("Error signing out tukang:", error);
+    } finally {
+      router.replace(LOGIN_ROUTE);
+    }
+  };
 
   const handleAcceptReport = async (id: string) => {
     try {
@@ -334,7 +365,7 @@ const DashboardTukang: React.FC = () => {
           <View style={styles.headerTopRow}>
             <TouchableOpacity
               style={styles.backButton}
-              onPress={() => router.replace("/(tabs)/Screens/LoginScreen")}
+              onPress={handleLogout}
             >
               <Feather name="arrow-left" size={28} color="#FFFFFF" />
             </TouchableOpacity>
@@ -532,7 +563,7 @@ const DashboardTukang: React.FC = () => {
                     disabled={updating}
                   >
                     <Feather name="check-circle" size={14} color="#FFFFFF" />
-                    <Text style={styles.actionButtonText}>Terima & Ajukan BO</Text>
+                    <Text style={styles.actionButtonText}>Terima</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -608,13 +639,15 @@ const DashboardTukang: React.FC = () => {
 
             <View style={styles.modalActionRow}>
               <TouchableOpacity
-                style={[
-                  styles.modalRejectButton,
-                  isRejectDisabled && styles.modalRejectButtonDisabled,
-                ]}
-                activeOpacity={0.9}
-                onPress={handleSubmitRejectReason}
-                disabled={isRejectDisabled || updating}
+                style={styles.modalRejectButton}
+                activeOpacity={isRejectDisabled || updating ? 1 : 0.9}
+                onPress={() => {
+                  if (isRejectDisabled || updating) {
+                    return;
+                  }
+
+                  void handleSubmitRejectReason();
+                }}
               >
                 <Feather name="x-circle" size={14} color="#FFFFFF" />
                 <Text style={styles.modalActionText}>Tolak</Text>
@@ -935,9 +968,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexDirection: "row",
     gap: 6,
-  },
-  modalRejectButtonDisabled: {
-    backgroundColor: "#FCA5A5",
   },
   modalCancelButton: {
     flex: 1,
