@@ -24,7 +24,6 @@ import {
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
   ActivityIndicator,
@@ -52,9 +51,6 @@ const DashboardDepartmentIT: React.FC = () => {
   const [activeTab, setActiveTab] = useState<DepartmentITTab>("semua");
   const [laporanList, setLaporanList] = useState<DepartmentITReport[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [rejectReason, setRejectReason] = useState("");
-  const [selectedRejectId, setSelectedRejectId] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
@@ -158,48 +154,6 @@ const DashboardDepartmentIT: React.FC = () => {
     }
   };
 
-  const handleAcceptReport = async (id: string) => {
-    try {
-      setUpdating(true);
-      await updateDoc(doc(db, "laporan", id), {
-        workflowStage: "business_office_review",
-        workflowState: "unit_approved",
-        approvedByUnitAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-
-      const selectedReport = laporanList.find((item) => item.id === id);
-      if (selectedReport?.authorUid) {
-        await createNotification({
-          userUid: selectedReport.authorUid,
-          reportId: id,
-          title: "Menunggu Business Office",
-          description: `Laporan '${selectedReport.title}' sedang menunggu persetujuan Business Office.`,
-          status: "terverifikasi",
-        });
-      }
-
-      setLaporanList((prev) =>
-        prev.map((item) =>
-          item.id === id
-            ? {
-                ...item,
-                workflowStage: "business_office_review",
-                workflowState: "unit_approved",
-              }
-            : item,
-        ),
-      );
-
-      Alert.alert("Berhasil", "Laporan diterima");
-    } catch (error) {
-      console.error("Error accepting report:", error);
-      Alert.alert("Error", "Gagal menerima laporan");
-    } finally {
-      setUpdating(false);
-    }
-  };
-
   const handleStartRepair = async (id: string) => {
     try {
       setUpdating(true);
@@ -285,71 +239,6 @@ const DashboardDepartmentIT: React.FC = () => {
       setUpdating(false);
     }
   };
-
-  const handleOpenRejectModal = (id: string) => {
-    setSelectedRejectId(id);
-    setRejectReason("");
-    setShowRejectModal(true);
-  };
-
-  const handleCloseRejectModal = () => {
-    setShowRejectModal(false);
-    setSelectedRejectId(null);
-    setRejectReason("");
-  };
-
-  const handleSubmitRejectReason = async () => {
-    if (!selectedRejectId || !rejectReason.trim()) {
-      return;
-    }
-
-    try {
-      setUpdating(true);
-      const cleanedReason = rejectReason.trim();
-
-      await updateDoc(doc(db, "laporan", selectedRejectId), {
-        workflowStage: "rejected",
-        workflowState: "rejected",
-        status: "ditolak",
-        rejectionReason: cleanedReason,
-        rejectedByRole: "department-it",
-        updatedAt: serverTimestamp(),
-      });
-
-      const selectedReport = laporanList.find((item) => item.id === selectedRejectId);
-      if (selectedReport?.authorUid) {
-        await createNotification({
-          userUid: selectedReport.authorUid,
-          reportId: selectedRejectId,
-          title: "Laporan Ditolak",
-          description: `Laporan '${selectedReport.title}' ditolak oleh Department IT. ${cleanedReason}`,
-          status: "ditolak",
-        });
-      }
-
-      setLaporanList((prev) =>
-        prev.map((item) =>
-          item.id === selectedRejectId
-            ? {
-                ...item,
-                workflowStage: "rejected",
-                workflowState: "rejected",
-              }
-            : item,
-        ),
-      );
-
-      Alert.alert("Berhasil", "Laporan ditolak");
-      handleCloseRejectModal();
-    } catch (error) {
-      console.error("Error rejecting report:", error);
-      Alert.alert("Error", "Gagal menolak laporan");
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const isRejectDisabled = !rejectReason.trim();
 
   if (loading) {
     return (
@@ -560,32 +449,6 @@ const DashboardDepartmentIT: React.FC = () => {
 
               {activeTab === "proses" &&
                 item.tabStatus === "proses" &&
-                item.workflowStage === "unit_review" && (
-                <View style={styles.actionRow}>
-                  <TouchableOpacity
-                    style={styles.actionButtonAccept}
-                    activeOpacity={0.9}
-                    onPress={() => handleAcceptReport(item.id)}
-                    disabled={updating}
-                  >
-                    <Feather name="check-circle" size={14} color="#FFFFFF" />
-                    <Text style={styles.actionButtonText}>Terima</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.actionButtonReject}
-                    activeOpacity={0.9}
-                    onPress={() => handleOpenRejectModal(item.id)}
-                    disabled={updating}
-                  >
-                    <Feather name="x-circle" size={14} color="#FFFFFF" />
-                    <Text style={styles.actionButtonText}>Tolak</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {activeTab === "proses" &&
-                item.tabStatus === "proses" &&
                 item.workflowStage === "unit_repair" &&
                 item.workflowState === "bo_approved" && (
                 <View style={styles.singleActionRow}>
@@ -623,54 +486,6 @@ const DashboardDepartmentIT: React.FC = () => {
           <View style={styles.bottomSpacer} />
         </View>
       </ScrollView>
-
-      {showRejectModal && (
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Tolak Laporan</Text>
-            <Text style={styles.modalSubtitle}>
-              Masukkan Alasan Penolakan Untuk Pelapor
-            </Text>
-
-            <TextInput
-              style={styles.modalTextArea}
-              multiline
-              numberOfLines={4}
-              value={rejectReason}
-              onChangeText={setRejectReason}
-              placeholder="Tulis alasan penolakan..."
-              placeholderTextColor="#9CA3AF"
-              textAlignVertical="top"
-            />
-
-            <View style={styles.modalActionRow}>
-              <TouchableOpacity
-                style={styles.modalRejectButton}
-                activeOpacity={isRejectDisabled || updating ? 1 : 0.9}
-                onPress={() => {
-                  if (isRejectDisabled || updating) {
-                    return;
-                  }
-
-                  void handleSubmitRejectReason();
-                }}
-              >
-                <Feather name="x-circle" size={14} color="#FFFFFF" />
-                <Text style={styles.modalActionText}>Tolak</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                activeOpacity={0.9}
-                onPress={handleCloseRejectModal}
-              >
-                <Feather name="x-circle" size={14} color="#FFFFFF" />
-                <Text style={styles.modalActionText}>Batal</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )}
     </SafeAreaView>
   );
 };
@@ -865,35 +680,8 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textTransform: "uppercase",
   },
-  actionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 10,
-    gap: 8,
-  },
   singleActionRow: {
     marginTop: 10,
-  },
-  actionButtonAccept: {
-    flex: 1,
-    backgroundColor: "#16A34A",
-    borderRadius: 999,
-    paddingVertical: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 6,
-  },
-  actionButtonReject: {
-    flex: 1,
-    backgroundColor: "#DC2626",
-    borderRadius: 999,
-    paddingVertical: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 6,
   },
   actionButtonRepair: {
     backgroundColor: "#EA580C",
@@ -916,78 +704,6 @@ const styles = StyleSheet.create({
   actionButtonText: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  modalOverlay: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: "rgba(69, 91, 146, 0.55)",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 20,
-  },
-  modalCard: {
-    width: "100%",
-    maxWidth: 360,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 16,
-  },
-  modalTitle: {
-    fontSize: 19,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  modalSubtitle: {
-    marginTop: 4,
-    fontSize: 11,
-    color: "#6B7280",
-  },
-  modalTextArea: {
-    marginTop: 10,
-    minHeight: 105,
-    borderWidth: 1.5,
-    borderColor: "#3B82F6",
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 13,
-    color: "#111827",
-    backgroundColor: "#FFFFFF",
-  },
-  modalActionRow: {
-    marginTop: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  modalRejectButton: {
-    flex: 1,
-    backgroundColor: "#EF4444",
-    borderRadius: 10,
-    paddingVertical: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 6,
-  },
-  modalCancelButton: {
-    flex: 1,
-    backgroundColor: "#EA580C",
-    borderRadius: 10,
-    paddingVertical: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 6,
-  },
-  modalActionText: {
-    fontSize: 13,
-    fontWeight: "700",
     color: "#FFFFFF",
   },
   bottomSpacer: {

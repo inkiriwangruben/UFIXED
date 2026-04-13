@@ -41,6 +41,7 @@ export interface WorkflowReport {
   unitTarget: UnitTarget;
   rejectionReason?: string;
   rejectedByRole?: string;
+  
   photos: ReportPhoto[];
   createdAtValue?: number | null;
   approvedByAdminAtValue?: number | null;

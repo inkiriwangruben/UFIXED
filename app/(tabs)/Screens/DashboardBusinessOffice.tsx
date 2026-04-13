@@ -1,34 +1,26 @@
-import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  collection,
-  doc,
-  onSnapshot,
-  updateDoc,
-  serverTimestamp,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { createNotification } from "@/lib/notifications";
-import { LOGIN_ROUTE, signOutCurrentUser } from "@/lib/session";
-import { resolveReportAuthorName } from "@/lib/user-profile";
 import { formatPriorityLabel } from "@/app/utils/priority";
 import {
-  normalizeWorkflowReport,
-  type WorkflowStage,
-  type WorkflowState,
+    normalizeWorkflowReport,
+    type WorkflowStage,
+    type WorkflowState,
 } from "@/app/utils/workflow";
+import { db } from "@/lib/firebase";
+import { LOGIN_ROUTE, signOutCurrentUser } from "@/lib/session";
+import { resolveReportAuthorName } from "@/lib/user-profile";
+import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { collection, onSnapshot } from "firebase/firestore";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  ActivityIndicator,
-  Alert,
+    ActivityIndicator,
+    Alert,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 type BusinessOfficeTab = "semua" | "approved" | "selesai";
@@ -52,10 +44,6 @@ const DashboardBusinessOffice: React.FC = () => {
   const [activeTab, setActiveTab] = useState<BusinessOfficeTab>("semua");
   const [laporanList, setLaporanList] = useState<BusinessOfficeReport[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [rejectReason, setRejectReason] = useState("");
-  const [selectedRejectId, setSelectedRejectId] = useState<string | null>(null);
-  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     let isActive = true;
@@ -81,10 +69,8 @@ const DashboardBusinessOffice: React.FC = () => {
                   id: data.id,
                   title: data.title,
                   description: data.description,
-                  tabStatus:
-                    data.workflowStage === "business_office_review"
-                      ? "approved"
-                      : "selesai",
+                  // classify as 'selesai' only when workflowStage === 'done'
+                  tabStatus: data.workflowStage === "done" ? "selesai" : "approved",
                   priority: data.priority || "medium",
                   icon: data.icon,
                   date: data.date,
@@ -156,98 +142,6 @@ const DashboardBusinessOffice: React.FC = () => {
       router.replace(LOGIN_ROUTE);
     }
   };
-
-  const handleAcceptReport = async (id: string) => {
-    try {
-      setUpdating(true);
-      await updateDoc(doc(db, "laporan", id), {
-        workflowStage: "unit_repair",
-        workflowState: "bo_approved",
-        approvedByBusinessOfficeAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      const selectedReport = laporanList.find((item) => item.id === id);
-      if (selectedReport?.authorUid) {
-        await createNotification({
-          userUid: selectedReport.authorUid,
-          reportId: id,
-          title: "Laporan Disetujui Business Office",
-          description: `Laporan '${selectedReport.title}' telah disetujui Business Office dan dikirim ke unit untuk diperbaiki.`,
-          status: "terverifikasi",
-        });
-      }
-
-      setLaporanList((prev) =>
-        prev.map((item) =>
-          item.id === id
-            ? {
-                ...item,
-                tabStatus: "selesai",
-                workflowStage: "unit_repair",
-                workflowState: "bo_approved",
-              }
-            : item,
-        ),
-      );
-      Alert.alert("Berhasil", "Laporan disetujui dan dikirim ke unit.");
-    } catch (error) {
-      console.error("Error accepting BO approval:", error);
-      Alert.alert("Error", "Gagal menyetujui laporan");
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const handleOpenRejectModal = (id: string) => {
-    setSelectedRejectId(id);
-    setRejectReason("");
-    setShowRejectModal(true);
-  };
-
-  const handleCloseRejectModal = () => {
-    setShowRejectModal(false);
-    setSelectedRejectId(null);
-    setRejectReason("");
-  };
-
-  const handleSubmitRejectReason = async () => {
-    if (!selectedRejectId || !rejectReason.trim()) return;
-
-    try {
-      setUpdating(true);
-      const cleanedReason = rejectReason.trim();
-      await updateDoc(doc(db, "laporan", selectedRejectId), {
-        workflowStage: "rejected",
-        workflowState: "rejected",
-        status: "ditolak",
-        rejectionReason: cleanedReason,
-        rejectedByRole: "business-office",
-        updatedAt: serverTimestamp(),
-      });
-
-      const selectedReport = laporanList.find((item) => item.id === selectedRejectId);
-      if (selectedReport?.authorUid) {
-        await createNotification({
-          userUid: selectedReport.authorUid,
-          reportId: selectedRejectId,
-          title: "Laporan Ditolak",
-          description: `Laporan '${selectedReport.title}' ditolak oleh Business Office. ${cleanedReason}`,
-          status: "ditolak",
-        });
-      }
-
-      setLaporanList((prev) => prev.filter((item) => item.id !== selectedRejectId));
-      Alert.alert("Berhasil", "Laporan ditolak.");
-      handleCloseRejectModal();
-    } catch (error) {
-      console.error("Error rejecting BO approval:", error);
-      Alert.alert("Error", "Gagal menolak laporan");
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const isRejectDisabled = !rejectReason.trim();
 
   if (loading) {
     return (
@@ -459,83 +353,12 @@ const DashboardBusinessOffice: React.FC = () => {
                   </View>
                 </View>
               </View>
-
-              {activeTab === "approved" && item.workflowStage === "business_office_review" && (
-                <View style={styles.actionRow}>
-                  <TouchableOpacity
-                    style={styles.actionButtonAccept}
-                    activeOpacity={0.9}
-                    onPress={() => handleAcceptReport(item.id)}
-                    disabled={updating}
-                  >
-                    <Feather name="check-circle" size={14} color="#FFFFFF" />
-                    <Text style={styles.actionButtonText}>Terima</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.actionButtonReject}
-                    activeOpacity={0.9}
-                    onPress={() => handleOpenRejectModal(item.id)}
-                    disabled={updating}
-                  >
-                    <Feather name="x-circle" size={14} color="#FFFFFF" />
-                    <Text style={styles.actionButtonText}>Tolak</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
             </TouchableOpacity>
           ))}
 
           <View style={styles.bottomSpacer} />
         </View>
       </ScrollView>
-
-      {showRejectModal && (
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Tolak Laporan</Text>
-            <Text style={styles.modalSubtitle}>
-              Masukkan alasan penolakan Business Office untuk pelapor.
-            </Text>
-
-            <TextInput
-              style={styles.modalTextArea}
-              multiline
-              numberOfLines={4}
-              value={rejectReason}
-              onChangeText={setRejectReason}
-              placeholder="Tulis alasan penolakan..."
-              placeholderTextColor="#9CA3AF"
-              textAlignVertical="top"
-            />
-
-            <View style={styles.modalActionRow}>
-              <TouchableOpacity
-                style={styles.modalRejectButton}
-                activeOpacity={isRejectDisabled || updating ? 1 : 0.9}
-                onPress={() => {
-                  if (isRejectDisabled || updating) {
-                    return;
-                  }
-
-                  void handleSubmitRejectReason();
-                }}
-              >
-                <Feather name="x-circle" size={14} color="#FFFFFF" />
-                <Text style={styles.modalActionText}>Tolak</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                activeOpacity={0.9}
-                onPress={handleCloseRejectModal}
-              >
-                <Feather name="x-circle" size={14} color="#FFFFFF" />
-                <Text style={styles.modalActionText}>Batal</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )}
     </SafeAreaView>
   );
 };
@@ -729,110 +552,6 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: "800",
     textTransform: "uppercase",
-  },
-  actionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 10,
-    gap: 8,
-  },
-  actionButtonAccept: {
-    flex: 1,
-    backgroundColor: "#16A34A",
-    borderRadius: 999,
-    paddingVertical: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 6,
-  },
-  actionButtonReject: {
-    flex: 1,
-    backgroundColor: "#DC2626",
-    borderRadius: 999,
-    paddingVertical: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 6,
-  },
-  actionButtonText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  modalOverlay: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: "rgba(69, 91, 146, 0.55)",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 20,
-  },
-  modalCard: {
-    width: "100%",
-    maxWidth: 360,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 16,
-  },
-  modalTitle: {
-    fontSize: 19,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  modalSubtitle: {
-    marginTop: 4,
-    fontSize: 11,
-    color: "#6B7280",
-  },
-  modalTextArea: {
-    marginTop: 10,
-    minHeight: 105,
-    borderWidth: 1.5,
-    borderColor: "#22C55E",
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 13,
-    color: "#111827",
-    backgroundColor: "#FFFFFF",
-  },
-  modalActionRow: {
-    marginTop: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  modalRejectButton: {
-    flex: 1,
-    backgroundColor: "#EF4444",
-    borderRadius: 10,
-    paddingVertical: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 6,
-  },
-  modalCancelButton: {
-    flex: 1,
-    backgroundColor: "#EA580C",
-    borderRadius: 10,
-    paddingVertical: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 6,
-  },
-  modalActionText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#FFFFFF",
   },
   bottomSpacer: {
     height: 32,

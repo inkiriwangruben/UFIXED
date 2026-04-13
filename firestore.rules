@@ -204,5 +204,45 @@ service cloud.firestore {
 
       allow delete: if false;
     }
+
+    // Protected subdocument for unit-provided metadata shown to Business Office
+    // and the approving unit only.
+    // Only Business Office and the approving technician may read this.
+    match /laporan/{reportId}/unitApproval/{metaId} {
+      allow read: if signedIn() && (
+        isBusinessOffice() || resource.data.approvedByUid == request.auth.uid
+      );
+
+      allow create: if signedIn() && (
+        (isDepartmentIT() && request.resource.data.approvedByUid == request.auth.uid &&
+          get(/databases/$(database)/documents/laporan/$(reportId)).data.unitTarget == 'department-it') ||
+        (isTukang() && request.resource.data.approvedByUid == request.auth.uid &&
+          get(/databases/$(database)/documents/laporan/$(reportId)).data.unitTarget == 'tukang')
+      ) &&
+        request.resource.data.estimatedWorkText is string &&
+        request.resource.data.estimatedWorkText.size() > 0 &&
+        request.resource.data.needsPurchase is bool &&
+        (
+          !request.resource.data.needsPurchase ||
+          request.resource.data.estimatedCost is number
+        ) &&
+        request.resource.data.unitApprovalNote is string &&
+        request.resource.data.unitApprovalNote.size() > 0;
+
+      allow update: if signedIn() &&
+        resource.data.approvedByUid == request.auth.uid &&
+        request.resource.data.approvedByUid == request.auth.uid &&
+        request.resource.data.estimatedWorkText is string &&
+        request.resource.data.estimatedWorkText.size() > 0 &&
+        request.resource.data.needsPurchase is bool &&
+        (
+          !request.resource.data.needsPurchase ||
+          request.resource.data.estimatedCost is number
+        ) &&
+        request.resource.data.unitApprovalNote is string &&
+        request.resource.data.unitApprovalNote.size() > 0;
+
+      allow delete: if false;
+    }
   }
 }
