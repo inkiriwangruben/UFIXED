@@ -46,6 +46,49 @@ interface UserItem {
   role: CanonicalUserRole;
 }
 
+const NAME_REGEX = /^[\p{L}\s]+$/u;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const getNameValidationError = (
+  value: string,
+  role: CanonicalUserRole | "",
+  touched: boolean,
+) => {
+  if (role !== "pelapor") {
+    return "";
+  }
+
+  const trimmedValue = value.trim();
+  if (!touched && !trimmedValue) {
+    return "";
+  }
+
+  if (!trimmedValue) {
+    return "Nama pelapor wajib diisi.";
+  }
+
+  if (!NAME_REGEX.test(trimmedValue)) {
+    return "Nama hanya boleh berisi huruf dan spasi.";
+  }
+
+  return "";
+};
+
+const getPasswordValidationError = (value: string, touched: boolean) => {
+  if (!touched && !value) {
+    return "";
+  }
+
+  if (value.length < 8) {
+    return "Password minimal 8 karakter.";
+  }
+
+  if (!/[A-Z]/.test(value) || !/[a-z]/.test(value) || !/\d/.test(value)) {
+    return "Password harus mengandung huruf besar, huruf kecil, dan angka.";
+  }
+
+  return "";
+};
+
 const MANAGEABLE_ROLE_OPTIONS = ROLE_OPTIONS.filter(
   (role) => role.value !== "admin",
 );
@@ -80,6 +123,10 @@ const KelolaUserScreen: React.FC = () => {
   const [newRole, setNewRole] = useState<CanonicalUserRole | "">("");
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [nameError, setNameError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [nameTouched, setNameTouched] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -129,6 +176,10 @@ const KelolaUserScreen: React.FC = () => {
     setNewPassword("");
     setNewRole("");
     setShowRoleMenu(false);
+    setNameError("");
+    setPasswordError("");
+    setNameTouched(false);
+    setPasswordTouched(false);
   };
 
   const handleBack = () => {
@@ -178,13 +229,21 @@ const KelolaUserScreen: React.FC = () => {
   };
 
   const handleAddUser = async () => {
-    if (!newEmail.trim() || !newPassword.trim() || !newRole) {
-      Alert.alert("Error", "Semua field harus diisi");
+    const normalizedEmail = newEmail.trim().toLowerCase();
+    const normalizedName = newName.trim();
+    const nextNameError = getNameValidationError(newName, newRole, true);
+    const nextPasswordError = getPasswordValidationError(newPassword, true);
+
+    setNameTouched(newRole === "pelapor");
+    setPasswordTouched(true);
+    setNameError(nextNameError);
+    setPasswordError(nextPasswordError);
+
+    if (!normalizedEmail || !newPassword.trim() || !newRole) {
       return;
     }
 
-    if (newRole === "pelapor" && !newName.trim()) {
-      Alert.alert("Error", "Nama pelapor wajib diisi");
+    if (nextNameError || nextPasswordError) {
       return;
     }
 
@@ -193,16 +252,8 @@ const KelolaUserScreen: React.FC = () => {
       return;
     }
 
-    const normalizedEmail = newEmail.trim().toLowerCase();
-    const normalizedName = newName.trim();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(normalizedEmail)) {
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
       Alert.alert("Error", "Format email tidak valid");
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      Alert.alert("Error", "Password minimal 6 karakter");
       return;
     }
 
@@ -257,7 +308,8 @@ const KelolaUserScreen: React.FC = () => {
             errorMessage = "Email sudah digunakan oleh akun lain";
             break;
           case "auth/weak-password":
-            errorMessage = "Password terlalu lemah (minimal 6 karakter)";
+            errorMessage =
+              "Password terlalu lemah. Gunakan minimal 8 karakter dengan huruf besar, huruf kecil, dan angka.";
             break;
           case "auth/invalid-email":
             errorMessage = "Format email tidak valid";
@@ -278,6 +330,15 @@ const KelolaUserScreen: React.FC = () => {
       setAdding(false);
     }
   };
+
+  const isAddButtonDisabled =
+    adding ||
+    !newEmail.trim() ||
+    !newRole ||
+    Boolean(getNameValidationError(newName, newRole, nameTouched)) ||
+    Boolean(getPasswordValidationError(newPassword, passwordTouched)) ||
+    (newRole === "pelapor" && !newName.trim()) ||
+    !newPassword;
 
   if (loading) {
     return (
@@ -392,13 +453,27 @@ const KelolaUserScreen: React.FC = () => {
               <View style={styles.modalFieldGroup}>
                 <Text style={styles.modalLabel}>Nama</Text>
                 <TextInput
-                  style={styles.modalInput}
+                  style={[
+                    styles.modalInput,
+                    nameError ? styles.modalInputError : undefined,
+                  ]}
                   placeholder="Masukkan nama pelapor"
                   placeholderTextColor="#9CA3AF"
                   autoCapitalize="words"
                   value={newName}
-                  onChangeText={setNewName}
+                  onBlur={() => {
+                    setNameTouched(true);
+                    setNameError(getNameValidationError(newName, newRole, true));
+                  }}
+                  onChangeText={(value) => {
+                    setNewName(value);
+                    setNameTouched(true);
+                    setNameError(getNameValidationError(value, newRole, true));
+                  }}
                 />
+                {nameError ? (
+                  <Text style={styles.modalErrorText}>{nameError}</Text>
+                ) : null}
               </View>
             ) : null}
 
@@ -418,13 +493,27 @@ const KelolaUserScreen: React.FC = () => {
             <View style={styles.modalFieldGroup}>
               <Text style={styles.modalLabel}>Password</Text>
               <TextInput
-                style={styles.modalInput}
+                style={[
+                  styles.modalInput,
+                  passwordError ? styles.modalInputError : undefined,
+                ]}
                 placeholder="Masukkan password"
                 placeholderTextColor="#9CA3AF"
                 secureTextEntry
                 value={newPassword}
-                onChangeText={setNewPassword}
+                onBlur={() => {
+                  setPasswordTouched(true);
+                  setPasswordError(getPasswordValidationError(newPassword, true));
+                }}
+                onChangeText={(value) => {
+                  setNewPassword(value);
+                  setPasswordTouched(true);
+                  setPasswordError(getPasswordValidationError(value, true));
+                }}
               />
+              {passwordError ? (
+                <Text style={styles.modalErrorText}>{passwordError}</Text>
+              ) : null}
             </View>
 
             <View style={styles.modalFieldGroup}>
@@ -458,6 +547,8 @@ const KelolaUserScreen: React.FC = () => {
                           if (role.value !== "pelapor") {
                             setNewName("");
                           }
+                          setNameTouched(false);
+                          setNameError("");
                           setShowRoleMenu(false);
                         }}
                       >
@@ -481,10 +572,13 @@ const KelolaUserScreen: React.FC = () => {
                 <Text style={styles.modalButtonCancelText}>Batal</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.modalButtonSubmit}
+                style={[
+                  styles.modalButtonSubmit,
+                  isAddButtonDisabled && styles.modalButtonSubmitDisabled,
+                ]}
                 activeOpacity={0.8}
                 onPress={handleAddUser}
-                disabled={adding}
+                disabled={isAddButtonDisabled}
               >
                 <Text style={styles.modalButtonSubmitText}>
                   {adding ? "Menambah..." : "Tambah"}
@@ -742,6 +836,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#111827",
   },
+  modalInputError: {
+    borderColor: "#EF4444",
+    backgroundColor: "#FEF2F2",
+  },
+  modalErrorText: {
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 18,
+    color: "#DC2626",
+  },
   modalSelect: {
     borderRadius: 10,
     borderWidth: 1,
@@ -801,6 +905,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginLeft: 8,
     backgroundColor: "#7C3AED",
+  },
+  modalButtonSubmitDisabled: {
+    backgroundColor: "#C4B5FD",
   },
   modalButtonSubmitText: {
     fontSize: 13,

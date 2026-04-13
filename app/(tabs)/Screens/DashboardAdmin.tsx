@@ -1,17 +1,3 @@
-import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  collection,
-  doc,
-  onSnapshot,
-  updateDoc,
-  serverTimestamp,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { createNotification } from "@/lib/notifications";
-import { LOGIN_ROUTE, signOutCurrentUser } from "@/lib/session";
-import { resolveReportAuthorName } from "@/lib/user-profile";
 import { formatPriorityLabel } from "@/app/utils/priority";
 import {
   getUnitLabel,
@@ -21,17 +7,23 @@ import {
   type WorkflowStage,
   type WorkflowState,
 } from "@/app/utils/workflow";
+import { db } from "@/lib/firebase";
+import { LOGIN_ROUTE, signOutCurrentUser } from "@/lib/session";
+import { resolveReportAuthorName } from "@/lib/user-profile";
+import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { collection, onSnapshot } from "firebase/firestore";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
-  ActivityIndicator,
-  Alert,
 } from "react-native";
 
 type AdminStatus = "semua" | "pending" | "verifikasi";
@@ -57,10 +49,6 @@ const DashboardAdmin: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminStatus>("semua");
   const [laporanList, setLaporanList] = useState<AdminLaporan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [rejectReason, setRejectReason] = useState("");
-  const [selectedRejectId, setSelectedRejectId] = useState<string | null>(null);
-  const [updating, setUpdating] = useState(false);
 
   // Fetch reports from Firestore
   useEffect(() => {
@@ -142,7 +130,8 @@ const DashboardAdmin: React.FC = () => {
       return visibleLaporan.filter((item) => item.workflowStage === "admin_review");
     }
 
-    return visibleLaporan.filter((item) => item.workflowStage !== "admin_review");
+    // "Selesai" harus menampilkan hanya laporan yang benar-benar selesai
+    return visibleLaporan.filter((item) => item.workflowStage === "done");
   }, [activeTab, visibleLaporan]);
 
   const summary = useMemo(
@@ -150,8 +139,7 @@ const DashboardAdmin: React.FC = () => {
       semua: visibleLaporan.length,
       laporan: visibleLaporan.filter((item) => item.workflowStage === "admin_review")
         .length,
-      selesai: visibleLaporan.filter((item) => item.workflowStage !== "admin_review")
-        .length,
+      selesai: visibleLaporan.filter((item) => item.workflowStage === "done").length,
     }),
     [visibleLaporan],
   );
@@ -165,118 +153,6 @@ const DashboardAdmin: React.FC = () => {
       router.replace(LOGIN_ROUTE);
     }
   };
-
-  const handleAcceptReport = async (id: string) => {
-    try {
-      setUpdating(true);
-      await updateDoc(doc(db, "laporan", id), {
-        status: "diproses",
-        workflowStage: "unit_review",
-        workflowState: "admin_approved",
-        approvedByAdminAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-
-      const selectedReport = laporanList.find((item) => item.id === id);
-      if (selectedReport?.authorUid) {
-        await createNotification({
-          userUid: selectedReport.authorUid,
-          reportId: id,
-          title: "Laporan Diverifikasi",
-          description: `Laporan '${selectedReport.title}' telah diverifikasi oleh Admin.`,
-          status: "diverifikasi",
-        });
-      }
-
-      // Update local state
-      setLaporanList((prev) =>
-        prev.map((item) =>
-          item.id === id
-            ? {
-                ...item,
-                status: "verifikasi",
-                workflowStage: "unit_review",
-                workflowState: "admin_approved",
-              }
-            : item,
-        ),
-      );
-
-      Alert.alert("Berhasil", "Laporan telah diterima");
-    } catch (error) {
-      console.error("Error accepting report:", error);
-      Alert.alert("Error", "Gagal menerima laporan");
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const handleOpenRejectModal = (id: string) => {
-    setSelectedRejectId(id);
-    setRejectReason("");
-    setShowRejectModal(true);
-  };
-
-  const handleCloseRejectModal = () => {
-    setShowRejectModal(false);
-    setSelectedRejectId(null);
-    setRejectReason("");
-  };
-
-  const handleSubmitRejectReason = async () => {
-    if (!selectedRejectId || !rejectReason.trim()) {
-      return;
-    }
-
-    try {
-      setUpdating(true);
-      const cleanedReason = rejectReason.trim();
-
-      await updateDoc(doc(db, "laporan", selectedRejectId), {
-        workflowStage: "rejected",
-        workflowState: "rejected",
-        status: "ditolak",
-        rejectionReason: cleanedReason,
-        rejectedByRole: "admin",
-        updatedAt: serverTimestamp(),
-      });
-
-      const selectedReport = laporanList.find((item) => item.id === selectedRejectId);
-      if (selectedReport?.authorUid) {
-        await createNotification({
-          userUid: selectedReport.authorUid,
-          reportId: selectedRejectId,
-          title: "Laporan Ditolak",
-          description: `Laporan '${selectedReport.title}' ditolak oleh Admin. ${cleanedReason}`,
-          status: "ditolak",
-        });
-      }
-
-      // Update local state
-      setLaporanList((prev) =>
-        prev.map((item) =>
-          item.id === selectedRejectId
-            ? {
-                ...item,
-                workflowStage: "rejected",
-                workflowState: "rejected",
-                rejectReason: cleanedReason,
-              }
-            : item,
-        ),
-      );
-
-      Alert.alert("Berhasil", "Laporan telah ditolak");
-      handleCloseRejectModal();
-    } catch (error) {
-      console.error("Error rejecting report:", error);
-      Alert.alert("Error", "Gagal menolak laporan");
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const isRejectDisabled = !rejectReason.trim();
 
   if (loading) {
     return (
@@ -505,85 +381,14 @@ const DashboardAdmin: React.FC = () => {
                       {formatPriorityLabel(item.priority)}
                     </Text>
                   </View>
-                </View>
               </View>
-
-              {activeTab === "pending" && item.workflowStage === "admin_review" && (
-                <View style={styles.actionRow}>
-                  <TouchableOpacity
-                    style={styles.actionButtonVerify}
-                    activeOpacity={0.9}
-                    onPress={() => handleAcceptReport(item.id)}
-                    disabled={updating}
-                  >
-                    <Feather name="check-circle" size={14} color="#FFFFFF" />
-                    <Text style={styles.actionButtonText}>Terima</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.actionButtonReject}
-                    activeOpacity={0.9}
-                    onPress={() => handleOpenRejectModal(item.id)}
-                    disabled={updating}
-                  >
-                    <Feather name="x-circle" size={14} color="#FFFFFF" />
-                    <Text style={styles.actionButtonText}>Tolak</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+            </View>
             </TouchableOpacity>
           ))}
 
           <View style={styles.bottomSpacer} />
         </View>
       </ScrollView>
-
-      {showRejectModal && (
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Tolak Laporan</Text>
-            <Text style={styles.modalSubtitle}>
-              Masukkan Alasan Penolakan Untuk Pelapor
-            </Text>
-
-            <TextInput
-              style={styles.modalTextArea}
-              multiline
-              numberOfLines={4}
-              value={rejectReason}
-              onChangeText={setRejectReason}
-              placeholder="Tulis alasan penolakan..."
-              placeholderTextColor="#9CA3AF"
-              textAlignVertical="top"
-            />
-
-            <View style={styles.modalActionRow}>
-              <TouchableOpacity
-                style={styles.modalRejectButton}
-                activeOpacity={isRejectDisabled || updating ? 1 : 0.9}
-                onPress={() => {
-                  if (isRejectDisabled || updating) {
-                    return;
-                  }
-
-                  void handleSubmitRejectReason();
-                }}
-              >
-                <Feather name="x-circle" size={14} color="#FFFFFF" />
-                <Text style={styles.modalActionText}>Tolak</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                activeOpacity={0.9}
-                onPress={handleCloseRejectModal}
-              >
-                <Feather name="x-circle" size={14} color="#FFFFFF" />
-                <Text style={styles.modalActionText}>Batal</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )}
     </SafeAreaView>
   );
 };
@@ -818,110 +623,6 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     fontSize: 11,
     color: "#6B7280",
-  },
-  actionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 10,
-    gap: 8,
-  },
-  actionButtonVerify: {
-    flex: 1,
-    backgroundColor: "#16A34A",
-    borderRadius: 999,
-    paddingVertical: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 6,
-  },
-  actionButtonReject: {
-    flex: 1,
-    backgroundColor: "#DC2626",
-    borderRadius: 999,
-    paddingVertical: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 6,
-  },
-  actionButtonText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  modalOverlay: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: "rgba(69, 91, 146, 0.55)",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 20,
-  },
-  modalCard: {
-    width: "100%",
-    maxWidth: 360,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 16,
-  },
-  modalTitle: {
-    fontSize: 19,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  modalSubtitle: {
-    marginTop: 4,
-    fontSize: 11,
-    color: "#6B7280",
-  },
-  modalTextArea: {
-    marginTop: 10,
-    minHeight: 105,
-    borderWidth: 1.5,
-    borderColor: "#C084FC",
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 13,
-    color: "#111827",
-    backgroundColor: "#FFFFFF",
-  },
-  modalActionRow: {
-    marginTop: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  modalRejectButton: {
-    flex: 1,
-    backgroundColor: "#EF4444",
-    borderRadius: 10,
-    paddingVertical: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 6,
-  },
-  modalCancelButton: {
-    flex: 1,
-    backgroundColor: "#EA580C",
-    borderRadius: 10,
-    paddingVertical: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 6,
-  },
-  modalActionText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#FFFFFF",
   },
   bottomSpacer: {
     height: 32,
