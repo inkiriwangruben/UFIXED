@@ -31,6 +31,7 @@ type PelaporTab = "semua" | "proses" | "selesai";
 type PelaporStatus = Exclude<PelaporTab, "semua">;
 type PelaporIcon = "monitor" | "tools";
 type PelaporKategori = "IT" | "Non-IT";
+type PelaporCategoryFilter = "it" | "non-it";
 
 interface PelaporLaporan {
   id: string;
@@ -47,9 +48,22 @@ interface PelaporLaporan {
   rejectionReason?: string;
 }
 
+const matchesCategoryFilter = (
+  category: PelaporKategori,
+  filter: PelaporCategoryFilter,
+) => {
+  if (filter === "it") {
+    return category === "IT";
+  }
+
+  return category === "Non-IT";
+};
+
 const DashboardPelapor: React.FC = () => {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<PelaporTab>("semua");
+  const [categoryFilter, setCategoryFilter] =
+    useState<PelaporCategoryFilter>("it");
   const [laporanList, setLaporanList] = useState<PelaporLaporan[]>([]);
   const [loading, setLoading] = useState(true);
   const [authResolved, setAuthResolved] = useState(false);
@@ -139,13 +153,23 @@ const DashboardPelapor: React.FC = () => {
     return unsubscribe;
   }, [authResolved, currentUser]);
 
+  useEffect(() => {
+    if (activeTab === "semua") {
+      setCategoryFilter("it");
+    }
+  }, [activeTab]);
+
   const filteredLaporan = useMemo(() => {
     if (activeTab === "semua") {
       return laporanList;
     }
 
-    return laporanList.filter((item) => item.status === activeTab);
-  }, [activeTab, laporanList]);
+    return laporanList.filter(
+      (item) =>
+        item.status === activeTab &&
+        matchesCategoryFilter(item.category, categoryFilter),
+    );
+  }, [activeTab, categoryFilter, laporanList]);
 
   const summary = useMemo(
     () => ({
@@ -303,13 +327,53 @@ const DashboardPelapor: React.FC = () => {
             </TouchableOpacity>
           </View>
 
+          {activeTab !== "semua" ? (
+            <View style={styles.categoryFilterRow}>
+              <TouchableOpacity
+                style={[
+                  styles.categoryFilterChip,
+                  categoryFilter === "it" && styles.categoryFilterChipActive,
+                ]}
+                activeOpacity={0.85}
+                onPress={() => setCategoryFilter("it")}
+              >
+                <Text
+                  style={[
+                    styles.categoryFilterChipText,
+                    categoryFilter === "it" && styles.categoryFilterChipTextActive,
+                  ]}
+                >
+                  IT
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.categoryFilterChip,
+                  categoryFilter === "non-it" && styles.categoryFilterChipActive,
+                ]}
+                activeOpacity={0.85}
+                onPress={() => setCategoryFilter("non-it")}
+              >
+                <Text
+                  style={[
+                    styles.categoryFilterChipText,
+                    categoryFilter === "non-it" &&
+                      styles.categoryFilterChipTextActive,
+                  ]}
+                >
+                  Non-IT
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
           {/* LIST LAPORAN */}
           {filteredLaporan.length === 0 ? (
             <View style={styles.emptyCard}>
               <Feather name="file-text" size={28} color="#9CA3AF" />
               <Text style={styles.emptyTitle}>Belum ada laporan</Text>
               <Text style={styles.emptySubtitle}>
-                Buat laporan baru atau ganti tab untuk melihat data lainnya.
+                Tidak ada laporan yang cocok dengan tab atau filter yang dipilih.
               </Text>
             </View>
           ) : (
@@ -587,6 +651,33 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: "#FFFFFF",
     fontWeight: "600",
+  },
+  categoryFilterRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 16,
+  },
+  categoryFilterChip: {
+    flex: 1,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#93C5FD",
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  categoryFilterChipActive: {
+    backgroundColor: "#1E5BFF",
+    borderColor: "#1E5BFF",
+  },
+  categoryFilterChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#1E5BFF",
+  },
+  categoryFilterChipTextActive: {
+    color: "#FFFFFF",
   },
   reportCard: {
     backgroundColor: "#F9FAFB",

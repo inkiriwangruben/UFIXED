@@ -141,6 +141,21 @@ service cloud.firestore {
         request.resource.data.status == 'selesai';
     }
 
+    function canReadReport() {
+      return isAdmin() ||
+        (isPelapor() && resource.data.authorUid == request.auth.uid) ||
+        (isDepartmentIT() && resource.data.unitTarget == 'department-it') ||
+        (isTukang() && resource.data.unitTarget == 'tukang') ||
+        (
+          isBusinessOffice() &&
+          resource.data.workflowStage in [
+            'business_office_review',
+            'unit_repair',
+            'done'
+          ]
+        );
+    }
+
     match /users/{userId} {
       allow get: if isOwnUser(userId) || isAdmin();
       allow list: if isAdmin();
@@ -166,7 +181,7 @@ service cloud.firestore {
     }
 
     match /laporan/{reportId} {
-      allow read: if signedIn();
+      allow read: if signedIn() && canReadReport();
 
       allow create: if signedIn() &&
         isPelapor() &&

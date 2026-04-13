@@ -191,6 +191,7 @@ const DetailLaporan: React.FC = () => {
   const params = useLocalSearchParams();
   const [report, setReport] = useState<WorkflowReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadErrorMessage, setLoadErrorMessage] = useState("");
   const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null);
   const [resolvedAuthorName, setResolvedAuthorName] = useState("");
   const [updating, setUpdating] = useState(false);
@@ -226,6 +227,7 @@ const DetailLaporan: React.FC = () => {
 
   useEffect(() => {
     if (!params.id || typeof params.id !== "string") {
+      setLoadErrorMessage("ID laporan tidak valid.");
       setLoading(false);
       return;
     }
@@ -233,6 +235,7 @@ const DetailLaporan: React.FC = () => {
     const unsubscribe = onSnapshot(
       doc(db, "laporan", params.id),
       (snap) => {
+        setLoadErrorMessage("");
         if (snap.exists()) {
           setReport(normalizeWorkflowReport(snap.id, snap.data()));
         } else {
@@ -240,7 +243,21 @@ const DetailLaporan: React.FC = () => {
         }
         setLoading(false);
       },
-      () => {
+      (error) => {
+        const errorCode =
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          typeof error.code === "string"
+            ? error.code
+            : "";
+
+        setReport(null);
+        setLoadErrorMessage(
+          errorCode === "permission-denied"
+            ? "Anda tidak memiliki akses ke laporan ini."
+            : "Gagal memuat detail laporan.",
+        );
         setLoading(false);
       },
     );
@@ -576,7 +593,16 @@ const DetailLaporan: React.FC = () => {
   if (!report) {
     return (
       <SafeAreaView style={[styles.safeArea, styles.centerContent]}>
-        <Text style={styles.loadingText}>Laporan tidak ditemukan.</Text>
+        <Text style={styles.loadingText}>
+          {loadErrorMessage || "Laporan tidak ditemukan."}
+        </Text>
+        <TouchableOpacity
+          style={styles.emptyActionButton}
+          activeOpacity={0.9}
+          onPress={handleBack}
+        >
+          <Text style={styles.emptyActionText}>Kembali</Text>
+        </TouchableOpacity>
       </SafeAreaView>
     );
   }
@@ -1039,6 +1065,21 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 15,
     color: "#6B7280",
+  },
+  emptyActionButton: {
+    marginTop: 16,
+    minWidth: 120,
+    borderRadius: 999,
+    backgroundColor: "#1E5BFF",
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyActionText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
   header: {
     flexDirection: "row",

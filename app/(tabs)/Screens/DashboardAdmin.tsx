@@ -27,6 +27,7 @@ import {
 } from "react-native";
 
 type AdminStatus = "semua" | "pending" | "verifikasi";
+type ConfirmationCategory = "it" | "non-it";
 
 interface AdminLaporan {
   id: string;
@@ -44,16 +45,29 @@ interface AdminLaporan {
   rejectReason?: string;
 }
 
+const matchesConfirmationCategory = (
+  unitTarget: UnitTarget,
+  category: ConfirmationCategory,
+) => {
+  if (category === "it") {
+    return unitTarget === "department-it";
+  }
+
+  return unitTarget === "tukang";
+};
+
 const DashboardAdmin: React.FC = () => {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<AdminStatus>("semua");
+  const [confirmationCategory, setConfirmationCategory] =
+    useState<ConfirmationCategory>("it");
   const [laporanList, setLaporanList] = useState<AdminLaporan[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch reports from Firestore
   useEffect(() => {
     let isActive = true;
     setLoading(true);
+
     const unsubscribe = onSnapshot(
       collection(db, "laporan"),
       (querySnapshot) => {
@@ -116,9 +130,25 @@ const DashboardAdmin: React.FC = () => {
     };
   }, []);
 
-  const visibleLaporan = useMemo(
-    () => laporanList,
-    [laporanList],
+  useEffect(() => {
+    if (activeTab !== "pending") {
+      setConfirmationCategory("it");
+    }
+  }, [activeTab]);
+
+  const visibleLaporan = useMemo(() => laporanList, [laporanList]);
+
+  const pendingLaporan = useMemo(
+    () => visibleLaporan.filter((item) => item.workflowStage === "admin_review"),
+    [visibleLaporan],
+  );
+
+  const filteredPendingLaporan = useMemo(
+    () =>
+      pendingLaporan.filter((item) =>
+        matchesConfirmationCategory(item.unitTarget, confirmationCategory),
+      ),
+    [confirmationCategory, pendingLaporan],
   );
 
   const filteredLaporan = useMemo(() => {
@@ -127,21 +157,19 @@ const DashboardAdmin: React.FC = () => {
     }
 
     if (activeTab === "pending") {
-      return visibleLaporan.filter((item) => item.workflowStage === "admin_review");
+      return filteredPendingLaporan;
     }
 
-    // "Selesai" harus menampilkan hanya laporan yang benar-benar selesai
     return visibleLaporan.filter((item) => item.workflowStage === "done");
-  }, [activeTab, visibleLaporan]);
+  }, [activeTab, filteredPendingLaporan, visibleLaporan]);
 
   const summary = useMemo(
     () => ({
       semua: visibleLaporan.length,
-      laporan: visibleLaporan.filter((item) => item.workflowStage === "admin_review")
-        .length,
+      laporan: pendingLaporan.length,
       selesai: visibleLaporan.filter((item) => item.workflowStage === "done").length,
     }),
-    [visibleLaporan],
+    [pendingLaporan.length, visibleLaporan],
   );
 
   const handleLogout = async () => {
@@ -172,10 +200,7 @@ const DashboardAdmin: React.FC = () => {
       >
         <View style={styles.header}>
           <View style={styles.headerTopRow}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={handleLogout}
-            >
+            <TouchableOpacity style={styles.backButton} onPress={handleLogout}>
               <Feather name="arrow-left" size={28} color="#FFFFFF" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Admin</Text>
@@ -231,33 +256,21 @@ const DashboardAdmin: React.FC = () => {
 
           <View style={styles.tabRow}>
             <TouchableOpacity
-              style={[
-                styles.tabItem,
-                activeTab === "semua" && styles.tabItemActive,
-              ]}
+              style={[styles.tabItem, activeTab === "semua" && styles.tabItemActive]}
               onPress={() => setActiveTab("semua")}
             >
               <Text
-                style={[
-                  styles.tabText,
-                  activeTab === "semua" && styles.tabTextActive,
-                ]}
+                style={[styles.tabText, activeTab === "semua" && styles.tabTextActive]}
               >
                 Semua
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[
-                styles.tabItem,
-                activeTab === "pending" && styles.tabItemActive,
-              ]}
+              style={[styles.tabItem, activeTab === "pending" && styles.tabItemActive]}
               onPress={() => setActiveTab("pending")}
             >
               <Text
-                style={[
-                  styles.tabText,
-                  activeTab === "pending" && styles.tabTextActive,
-                ]}
+                style={[styles.tabText, activeTab === "pending" && styles.tabTextActive]}
               >
                 Laporan
               </Text>
@@ -280,111 +293,164 @@ const DashboardAdmin: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          {filteredLaporan.map((item, index) => (
-            <TouchableOpacity
-              key={item.id}
-              style={[styles.reportCard, index > 0 && styles.reportCardSpacing]}
-              activeOpacity={0.9}
-              onPress={() =>
-                router.push({
-                  pathname: "/(tabs)/Screens/DetailLaporan",
-                  params: {
-                    id: item.id,
-                    workflowSource: "admin",
-                    returnPath: "/(tabs)/Screens/DashboardAdmin",
-                  },
-                })
-              }
-            >
-              <View style={styles.reportHeaderRow}>
-                <View style={styles.reportTitleRow}>
-                  <View style={styles.reportIconCircle}>
-                    {item.icon === "monitor" ? (
-                      <Feather name="monitor" size={16} color="#1E40AF" />
-                    ) : (
-                      <Feather name="tool" size={16} color="#F97316" />
-                    )}
+          {activeTab === "pending" ? (
+            <View style={styles.categoryFilterRow}>
+              <TouchableOpacity
+                style={[
+                  styles.categoryFilterChip,
+                  confirmationCategory === "it" &&
+                    styles.categoryFilterChipActive,
+                ]}
+                activeOpacity={0.85}
+                onPress={() => setConfirmationCategory("it")}
+              >
+                <Text
+                  style={[
+                    styles.categoryFilterChipText,
+                    confirmationCategory === "it" &&
+                      styles.categoryFilterChipTextActive,
+                  ]}
+                >
+                  IT
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.categoryFilterChip,
+                  confirmationCategory === "non-it" &&
+                    styles.categoryFilterChipActive,
+                ]}
+                activeOpacity={0.85}
+                onPress={() => setConfirmationCategory("non-it")}
+              >
+                <Text
+                  style={[
+                    styles.categoryFilterChipText,
+                    confirmationCategory === "non-it" &&
+                      styles.categoryFilterChipTextActive,
+                  ]}
+                >
+                  Non-IT
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          {filteredLaporan.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Feather name="file-text" size={28} color="#9CA3AF" />
+              <Text style={styles.emptyTitle}>Belum ada laporan</Text>
+              <Text style={styles.emptySubtitle}>
+                Tidak ada laporan yang cocok dengan tab atau filter yang dipilih.
+              </Text>
+            </View>
+          ) : (
+            filteredLaporan.map((item, index) => (
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.reportCard, index > 0 && styles.reportCardSpacing]}
+                activeOpacity={0.9}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(tabs)/Screens/DetailLaporan",
+                    params: {
+                      id: item.id,
+                      workflowSource: "admin",
+                      returnPath: "/(tabs)/Screens/DashboardAdmin",
+                    },
+                  })
+                }
+              >
+                <View style={styles.reportHeaderRow}>
+                  <View style={styles.reportTitleRow}>
+                    <View style={styles.reportIconCircle}>
+                      {item.icon === "monitor" ? (
+                        <Feather name="monitor" size={16} color="#1E40AF" />
+                      ) : (
+                        <Feather name="tool" size={16} color="#F97316" />
+                      )}
+                    </View>
+                    <Text style={styles.reportTitle} numberOfLines={1}>
+                      {item.title}
+                    </Text>
                   </View>
-                  <Text style={styles.reportTitle} numberOfLines={1}>
-                    {item.title}
-                  </Text>
+                  <Feather name="chevron-right" size={18} color="#9CA3AF" />
                 </View>
-                <Feather name="chevron-right" size={18} color="#9CA3AF" />
-              </View>
 
-              <Text style={styles.reportDescription} numberOfLines={3}>
-                {item.description}
-              </Text>
+                <Text style={styles.reportDescription} numberOfLines={3}>
+                  {item.description}
+                </Text>
 
-              <Text style={styles.reportDescription} numberOfLines={1}>
-                Tahap: {getWorkflowStageLabel(item.workflowStage, item.workflowState)} • Tujuan:{" "}
-                {getUnitLabel(item.unitTarget)}
-              </Text>
+                <Text style={styles.reportDescription} numberOfLines={1}>
+                  Tahap: {getWorkflowStageLabel(item.workflowStage, item.workflowState)} -
+                  {" "}Tujuan: {getUnitLabel(item.unitTarget)}
+                </Text>
 
-              <View style={styles.reportFooterRow}>
-                <View style={styles.reportMetaRow}>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 12,
-                    }}
-                  >
-                    <View style={styles.reportMetaItem}>
-                      <Feather name="user" size={12} color="#6B7280" />
-                      <Text style={styles.reportMetaText}>{item.author}</Text>
+                <View style={styles.reportFooterRow}>
+                  <View style={styles.reportMetaRow}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 12,
+                      }}
+                    >
+                      <View style={styles.reportMetaItem}>
+                        <Feather name="user" size={12} color="#6B7280" />
+                        <Text style={styles.reportMetaText}>{item.author}</Text>
+                      </View>
+                      <View style={styles.reportMetaItem}>
+                        <Feather name="calendar" size={12} color="#6B7280" />
+                        <Text style={styles.reportMetaText}>{item.date}</Text>
+                      </View>
                     </View>
-                    <View style={styles.reportMetaItem}>
-                      <Feather name="calendar" size={12} color="#6B7280" />
-                      <Text style={styles.reportMetaText}>{item.date}</Text>
-                    </View>
-                  </View>
 
-                  <View
-                    style={[
-                      styles.priorityBadge,
-                      {
-                        backgroundColor:
-                          item.priority === "critical"
-                            ? "#FEF2F2"
-                            : item.priority === "high"
-                              ? "#FFF7ED"
-                              : item.priority === "medium"
-                                ? "#EFF6FF"
-                                : "#F0FDF4",
-                        borderColor:
-                          item.priority === "critical"
-                            ? "#EF4444"
-                            : item.priority === "high"
-                              ? "#F97316"
-                              : item.priority === "medium"
-                                ? "#3B82F6"
-                                : "#22C55E",
-                      },
-                    ]}
-                  >
-                    <Text
+                    <View
                       style={[
-                        styles.priorityBadgeText,
+                        styles.priorityBadge,
                         {
-                          color:
+                          backgroundColor:
                             item.priority === "critical"
-                              ? "#B91C1C"
+                              ? "#FEF2F2"
                               : item.priority === "high"
-                                ? "#C2410C"
+                                ? "#FFF7ED"
                                 : item.priority === "medium"
-                                  ? "#1D4ED8"
-                                  : "#15803D",
+                                  ? "#EFF6FF"
+                                  : "#F0FDF4",
+                          borderColor:
+                            item.priority === "critical"
+                              ? "#EF4444"
+                              : item.priority === "high"
+                                ? "#F97316"
+                                : item.priority === "medium"
+                                  ? "#3B82F6"
+                                  : "#22C55E",
                         },
                       ]}
                     >
-                      {formatPriorityLabel(item.priority)}
-                    </Text>
+                      <Text
+                        style={[
+                          styles.priorityBadgeText,
+                          {
+                            color:
+                              item.priority === "critical"
+                                ? "#B91C1C"
+                                : item.priority === "high"
+                                  ? "#C2410C"
+                                  : item.priority === "medium"
+                                    ? "#1D4ED8"
+                                    : "#15803D",
+                          },
+                        ]}
+                      >
+                        {formatPriorityLabel(item.priority)}
+                      </Text>
+                    </View>
                   </View>
-              </View>
-            </View>
-            </TouchableOpacity>
-          ))}
+                </View>
+              </TouchableOpacity>
+            ))
+          )}
 
           <View style={styles.bottomSpacer} />
         </View>
@@ -546,6 +612,33 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "600",
   },
+  categoryFilterRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 16,
+  },
+  categoryFilterChip: {
+    flex: 1,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#D8B4FE",
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  categoryFilterChipActive: {
+    backgroundColor: "#7C3AED",
+    borderColor: "#7C3AED",
+  },
+  categoryFilterChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#7C3AED",
+  },
+  categoryFilterChipTextActive: {
+    color: "#FFFFFF",
+  },
   reportCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 24,
@@ -586,6 +679,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     color: "#111827",
+  },
+  emptyCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  emptyTitle: {
+    marginTop: 12,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  emptySubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 20,
+    color: "#6B7280",
+    textAlign: "center",
   },
   priorityBadge: {
     paddingHorizontal: 6,

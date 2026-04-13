@@ -5,8 +5,10 @@ import {
   collection,
   doc,
   onSnapshot,
+  query,
   updateDoc,
   serverTimestamp,
+  where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { createNotification } from "@/lib/notifications";
@@ -56,8 +58,12 @@ const DashboardDepartmentIT: React.FC = () => {
   useEffect(() => {
     let isActive = true;
     setLoading(true);
-    const unsubscribe = onSnapshot(
+    const reportsQuery = query(
       collection(db, "laporan"),
+      where("unitTarget", "==", "department-it"),
+    );
+    const unsubscribe = onSnapshot(
+      reportsQuery,
       (querySnapshot) => {
         void (async () => {
           const reports = (
