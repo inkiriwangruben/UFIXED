@@ -14,9 +14,10 @@ import {
   Text,
   TouchableOpacity,
   View,
-  ActivityIndicator,
   Alert,
 } from "react-native";
+
+import ScreenLoader from "@/components/ui/ScreenLoader";
 
 type NotifStatus =
   | "diverifikasi"
@@ -133,10 +134,11 @@ const NotifikasiScreen: React.FC = () => {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.safeArea, styles.centerContent]}>
-        <ActivityIndicator size="large" color="#7C3AED" />
-        <Text style={styles.loadingText}>Memuat notifikasi...</Text>
-      </SafeAreaView>
+      <ScreenLoader
+        message="Memuat notifikasi..."
+        accentColor="#7C3AED"
+        backgroundColor="#FFFFFF"
+      />
     );
   }
 

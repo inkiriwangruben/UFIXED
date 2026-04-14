@@ -1,4 +1,4 @@
-import { FirebaseApp, getApp, getApps, initializeApp } from "firebase/app";
+import { getApp, getApps, initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
@@ -25,11 +25,6 @@ if (missingConfig.length > 0) {
 }
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-const adminCreateAppName = "ufixed-admin-create";
-const secondaryApp: FirebaseApp =
-  getApps().find((item) => item.name === adminCreateAppName) ??
-  initializeApp(firebaseConfig, adminCreateAppName);
 
 export const db = getFirestore(app);
 export const auth = getAuth(app);
-export const secondaryAuth = getAuth(secondaryApp);

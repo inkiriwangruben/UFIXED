@@ -3,18 +3,9 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   collection,
-  deleteDoc,
-  doc,
-  getDocs,
   onSnapshot,
-  query,
-  serverTimestamp,
-  setDoc,
-  where,
 } from "firebase/firestore";
-import { createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import {
-  ActivityIndicator,
   Alert,
   Platform,
   SafeAreaView,
@@ -27,17 +18,16 @@ import {
   View,
 } from "react-native";
 
-import { db, secondaryAuth } from "@/lib/firebase";
+import BlockingLoader from "@/components/ui/BlockingLoader";
+import ScreenLoader from "@/components/ui/ScreenLoader";
+import { createManagedUser, deleteManagedUser } from "@/lib/admin-user-service";
+import { db } from "@/lib/firebase";
 import {
   ROLE_OPTIONS,
   getRoleLabel,
   type CanonicalUserRole,
 } from "@/lib/roles";
-import {
-  buildCanonicalUserProfileInput,
-  getDefaultNameFromEmail,
-  mapUserDocumentToProfile,
-} from "@/lib/user-profile";
+import { mapUserDocumentToProfile } from "@/lib/user-profile";
 
 interface UserItem {
   id: string;
@@ -123,6 +113,7 @@ const KelolaUserScreen: React.FC = () => {
   const [newRole, setNewRole] = useState<CanonicalUserRole | "">("");
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [nameError, setNameError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
@@ -216,15 +207,17 @@ const KelolaUserScreen: React.FC = () => {
     }
 
     try {
-      await deleteDoc(doc(db, "users", selectedUser.id));
-      Alert.alert(
-        "Berhasil",
-        "Profil pengguna berhasil dihapus. Akses aplikasi untuk akun ini telah dicabut.",
-      );
+      setDeleting(true);
+      await deleteManagedUser(selectedUser.id);
       handleCloseDeleteModal();
     } catch (error) {
       console.error("Error deleting user:", error);
-      Alert.alert("Error", "Gagal menghapus profil pengguna");
+      Alert.alert(
+        "Error",
+        error instanceof Error ? error.message : "Gagal menghapus pengguna",
+      );
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -259,71 +252,21 @@ const KelolaUserScreen: React.FC = () => {
 
     try {
       setAdding(true);
-
-      const emailQuery = query(
-        collection(db, "users"),
-        where("email", "==", normalizedEmail),
-      );
-      const emailSnapshot = await getDocs(emailQuery);
-
-      if (!emailSnapshot.empty) {
-        Alert.alert("Error", "Email sudah terdaftar di sistem");
-        return;
-      }
-
-      const userCredential = await createUserWithEmailAndPassword(
-        secondaryAuth,
-        normalizedEmail,
-        newPassword,
-      );
-      const uid = userCredential.user.uid;
-      const profile = buildCanonicalUserProfileInput({
-        uid,
+      await createManagedUser({
         email: normalizedEmail,
-        name:
-          newRole === "pelapor"
-            ? normalizedName
-            : getDefaultNameFromEmail(normalizedEmail),
+        password: newPassword,
         role: newRole,
+        ...(newRole === "pelapor" ? { name: normalizedName } : {}),
       });
-
-      await setDoc(doc(db, "users", uid), {
-        ...profile,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-
-      await signOut(secondaryAuth);
 
       resetAddForm();
       setShowAddModal(false);
-      Alert.alert("Berhasil", "Pengguna berhasil ditambahkan");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error adding user:", error);
-      let errorMessage = "Gagal menambahkan pengguna";
-
-      if (error?.code) {
-        switch (error.code) {
-          case "auth/email-already-in-use":
-            errorMessage = "Email sudah digunakan oleh akun lain";
-            break;
-          case "auth/weak-password":
-            errorMessage =
-              "Password terlalu lemah. Gunakan minimal 8 karakter dengan huruf besar, huruf kecil, dan angka.";
-            break;
-          case "auth/invalid-email":
-            errorMessage = "Format email tidak valid";
-            break;
-          case "auth/operation-not-allowed":
-            errorMessage = "Pendaftaran akun dinonaktifkan";
-            break;
-          default:
-            errorMessage = error.message || errorMessage;
-            break;
-        }
-      } else if (error instanceof Error) {
-        errorMessage = error.message;
-      }
+      const errorMessage =
+        error instanceof Error && error.message
+          ? error.message
+          : "Gagal menambahkan pengguna";
 
       Alert.alert("Error", errorMessage);
     } finally {
@@ -339,13 +282,18 @@ const KelolaUserScreen: React.FC = () => {
     Boolean(getPasswordValidationError(newPassword, passwordTouched)) ||
     (newRole === "pelapor" && !newName.trim()) ||
     !newPassword;
+  const isBusy = adding || deleting;
+  const busyMessage = deleting
+    ? "Menghapus pengguna..."
+    : "Menyimpan pengguna...";
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.safeArea, styles.centerContent]}>
-        <ActivityIndicator size="large" color="#7C3AED" />
-        <Text style={styles.loadingText}>Memuat data pengguna...</Text>
-      </SafeAreaView>
+      <ScreenLoader
+        message="Memuat data pengguna..."
+        accentColor="#7C3AED"
+        backgroundColor="#F5F5F5"
+      />
     );
   }
 
@@ -581,7 +529,7 @@ const KelolaUserScreen: React.FC = () => {
                 disabled={isAddButtonDisabled}
               >
                 <Text style={styles.modalButtonSubmitText}>
-                  {adding ? "Menambah..." : "Tambah"}
+                  {adding ? "Menyimpan..." : "Tambah"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -606,23 +554,33 @@ const KelolaUserScreen: React.FC = () => {
             <View style={styles.deleteModalButtonRow}>
               <TouchableOpacity
                 style={styles.deleteModalCancelButton}
-                activeOpacity={0.9}
+                activeOpacity={deleting ? 1 : 0.9}
                 onPress={handleCloseDeleteModal}
+                disabled={deleting}
               >
                 <Text style={styles.deleteModalCancelText}>Batal</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.deleteModalConfirmButton}
-                activeOpacity={0.9}
+                activeOpacity={deleting ? 1 : 0.9}
                 onPress={handleConfirmDelete}
+                disabled={deleting}
               >
                 <Feather name="trash-2" size={14} color="#FFFFFF" />
-                <Text style={styles.deleteModalConfirmText}>Hapus</Text>
+                <Text style={styles.deleteModalConfirmText}>
+                  {deleting ? "Menghapus..." : "Hapus"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       )}
+      <BlockingLoader
+        visible={isBusy}
+        message={busyMessage}
+        detail="Perubahan data pengguna sedang diproses."
+        accentColor="#7C3AED"
+      />
     </SafeAreaView>
   );
 };

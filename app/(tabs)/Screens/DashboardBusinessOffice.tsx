@@ -13,7 +13,6 @@ import { useRouter } from "expo-router";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   SafeAreaView,
   ScrollView,
@@ -23,6 +22,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
+import ScreenLoader from "@/components/ui/ScreenLoader";
 
 type BusinessOfficeTab = "semua" | "approved" | "selesai";
 type ConfirmationCategory = "it" | "non-it";
@@ -136,7 +137,7 @@ const DashboardBusinessOffice: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (activeTab !== "approved") {
+    if (activeTab === "semua") {
       setConfirmationCategory("it");
     }
   }, [activeTab]);
@@ -159,6 +160,19 @@ const DashboardBusinessOffice: React.FC = () => {
     [confirmationCategory, confirmationLaporan],
   );
 
+  const completedLaporan = useMemo(
+    () => visibleLaporan.filter((item) => item.tabStatus === "selesai"),
+    [visibleLaporan],
+  );
+
+  const filteredCompletedLaporan = useMemo(
+    () =>
+      completedLaporan.filter((item) =>
+        matchesConfirmationCategory(item.unitTarget, confirmationCategory),
+      ),
+    [completedLaporan, confirmationCategory],
+  );
+
   const filteredLaporan = useMemo(() => {
     if (activeTab === "semua") {
       return visibleLaporan;
@@ -168,8 +182,8 @@ const DashboardBusinessOffice: React.FC = () => {
       return filteredConfirmationLaporan;
     }
 
-    return visibleLaporan.filter((item) => item.tabStatus === "selesai");
-  }, [activeTab, filteredConfirmationLaporan, visibleLaporan]);
+    return filteredCompletedLaporan;
+  }, [activeTab, filteredCompletedLaporan, filteredConfirmationLaporan, visibleLaporan]);
 
   const summary = useMemo(
     () => ({
@@ -192,10 +206,11 @@ const DashboardBusinessOffice: React.FC = () => {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.safeArea, styles.centerContent]}>
-        <ActivityIndicator size="large" color="#08A63A" />
-        <Text style={styles.loadingText}>Memuat data laporan...</Text>
-      </SafeAreaView>
+      <ScreenLoader
+        message="Memuat data laporan..."
+        accentColor="#08A63A"
+        backgroundColor="#F8FAFC"
+      />
     );
   }
 
@@ -288,7 +303,7 @@ const DashboardBusinessOffice: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          {activeTab === "approved" ? (
+          {activeTab !== "semua" ? (
             <View style={styles.categoryFilterRow}>
               <TouchableOpacity
                 style={[

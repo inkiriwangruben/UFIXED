@@ -2,6 +2,8 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
+const os = require("os");
+const adminUserRoutes = require("./routes/admin-users");
 const uploadRoutes = require("./routes/upload");
 
 const app = express();
@@ -20,11 +22,32 @@ const allowedOrigins = (process.env.CORS_ORIGIN || "")
   .filter(Boolean);
 
 const corsOrigins = allowedOrigins.length > 0 ? allowedOrigins : defaultOrigins;
+const allowAllOrigins = corsOrigins.includes("*");
+
+const getLanUrls = (portNumber) => {
+  const networkInterfaces = os.networkInterfaces();
+  const urls = [];
+
+  Object.values(networkInterfaces).forEach((interfaceAddresses) => {
+    (interfaceAddresses || []).forEach((address) => {
+      if (
+        address &&
+        address.family === "IPv4" &&
+        !address.internal &&
+        address.address
+      ) {
+        urls.push(`http://${address.address}:${portNumber}`);
+      }
+    });
+  });
+
+  return [...new Set(urls)];
+};
 
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || corsOrigins.includes(origin)) {
+      if (allowAllOrigins || !origin || corsOrigins.includes(origin)) {
         callback(null, true);
         return;
       }
@@ -43,6 +66,7 @@ app.get("/", (_req, res) => {
 });
 
 app.use("/uploads", uploadRoutes);
+app.use("/admin", adminUserRoutes);
 
 app.use((error, _req, res, _next) => {
   if (error?.name === "MulterError" && error.code === "LIMIT_FILE_SIZE") {
@@ -63,7 +87,15 @@ app.use((error, _req, res, _next) => {
 });
 
 app.listen(port, host, () => {
+  const lanUrls = getLanUrls(port);
+
   console.log(`UFIXED upload server berjalan di http://localhost:${port}`);
-  console.log(`Akses LAN: http://192.168.1.20:${port}`);
-  console.log(`CORS origin aktif: ${corsOrigins.join(", ")}`);
+  console.log(
+    `Akses LAN: ${lanUrls.length > 0 ? lanUrls.join(", ") : "tidak terdeteksi"}`,
+  );
+  console.log(
+    `CORS origin aktif: ${
+      allowAllOrigins ? "*" : corsOrigins.join(", ")
+    }`,
+  );
 });

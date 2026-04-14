@@ -28,9 +28,11 @@ import {
   Text,
   TouchableOpacity,
   View,
-  ActivityIndicator,
   Alert,
 } from "react-native";
+
+import BlockingLoader from "@/components/ui/BlockingLoader";
+import ScreenLoader from "@/components/ui/ScreenLoader";
 
 type TukangTab = "semua" | "proses" | "selesai";
 type TukangIcon = "tools";
@@ -192,7 +194,6 @@ const DashboardTukang: React.FC = () => {
             : item,
         ),
       );
-      Alert.alert("Berhasil", "Perbaikan dimulai");
     } catch (error) {
       console.error("Error starting repair:", error);
       Alert.alert("Error", "Gagal memulai perbaikan");
@@ -234,7 +235,6 @@ const DashboardTukang: React.FC = () => {
             : item,
         ),
       );
-      Alert.alert("Berhasil", "Perbaikan selesai");
     } catch (error) {
       console.error("Error finishing repair:", error);
       Alert.alert("Error", "Gagal menyelesaikan perbaikan");
@@ -245,10 +245,11 @@ const DashboardTukang: React.FC = () => {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.safeArea, styles.centerContent]}>
-        <ActivityIndicator size="large" color="#EA580C" />
-        <Text style={styles.loadingText}>Memuat data laporan...</Text>
-      </SafeAreaView>
+      <ScreenLoader
+        message="Memuat data laporan..."
+        accentColor="#EA580C"
+        backgroundColor="#F3F4F6"
+      />
     );
   }
 
@@ -489,6 +490,12 @@ const DashboardTukang: React.FC = () => {
           <View style={styles.bottomSpacer} />
         </View>
       </ScrollView>
+      <BlockingLoader
+        visible={updating}
+        message="Memperbarui status perbaikan..."
+        detail="Status laporan sedang disimpan."
+        accentColor="#EA580C"
+      />
     </SafeAreaView>
   );
 };

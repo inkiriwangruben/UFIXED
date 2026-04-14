@@ -1,7 +1,6 @@
 import { formatPriorityLabel } from "@/app/utils/priority";
 import {
   formatTimelineDate,
-  getPelaporStatusLabel,
   getUnitLabel,
   normalizeWorkflowReport,
   type WorkflowReport,
@@ -26,7 +25,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { doc, onSnapshot } from "firebase/firestore";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Modal,
   Platform,
@@ -39,6 +37,9 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
+import BlockingLoader from "@/components/ui/BlockingLoader";
+import ScreenLoader from "@/components/ui/ScreenLoader";
 
 type TimelineTone = "warning" | "info" | "accent" | "success";
 
@@ -327,13 +328,15 @@ const DetailLaporan: React.FC = () => {
     };
   }, []);
 
+  const reportId = report?.id ?? null;
+
   useEffect(() => {
-    if (!report) {
+    if (!reportId) {
       setUnitApprovalMeta(null);
       return;
     }
 
-    const metaRef = doc(db, "laporan", report.id, "unitApproval", "meta");
+    const metaRef = doc(db, "laporan", reportId, "unitApproval", "meta");
     const unsubscribeMeta = onSnapshot(
       metaRef,
       (snap) => {
@@ -373,7 +376,7 @@ const DetailLaporan: React.FC = () => {
     );
 
     return () => unsubscribeMeta();
-  }, [report?.id]);
+  }, [reportId]);
 
   const canViewUnitMeta = useMemo(() => {
     const meUid = auth.currentUser?.uid;
@@ -458,7 +461,6 @@ const DetailLaporan: React.FC = () => {
       setUpdating(true);
       if (workflowSource === "admin") {
         await approveReportAsAdmin(report.id, notifyCtx);
-        Alert.alert("Berhasil", "Laporan telah diterima");
       } else if (workflowSource === "unit") {
         // For unit approvals, open a simple mobile form before sending to BO.
         setShowUnitApproveModal(true);
@@ -469,7 +471,6 @@ const DetailLaporan: React.FC = () => {
         return;
       } else if (workflowSource === "business-office") {
         await approveReportAsBusinessOffice(report.id, notifyCtx);
-        Alert.alert("Berhasil", "Laporan disetujui dan dikirim ke unit.");
       }
     } catch (error) {
       console.error("Error accepting report from detail:", error);
@@ -516,7 +517,6 @@ const DetailLaporan: React.FC = () => {
         needsPurchase: unitApproveNeedsCost,
         unitApprovalNote: note,
       });
-      Alert.alert("Berhasil", "Laporan diterima dan dikirim ke Business Office.");
       handleCloseUnitApproveModal();
     } catch (error) {
       console.error("Error approving report as unit:", error);
@@ -553,13 +553,10 @@ const DetailLaporan: React.FC = () => {
       setUpdating(true);
       if (workflowSource === "admin") {
         await rejectReportAsAdmin(report.id, rejectReason, notifyCtx);
-        Alert.alert("Berhasil", "Laporan telah ditolak");
       } else if (workflowSource === "unit") {
         await rejectReportAsUnit(report.id, rejectReason, report.unitTarget, notifyCtx);
-        Alert.alert("Berhasil", "Laporan telah ditolak");
       } else if (workflowSource === "business-office") {
         await rejectReportAsBusinessOffice(report.id, rejectReason, notifyCtx);
-        Alert.alert("Berhasil", "Laporan ditolak.");
       }
       handleCloseRejectModal();
     } catch (error) {
@@ -581,13 +578,20 @@ const DetailLaporan: React.FC = () => {
           Number(unitApproveCost.replace(/[^0-9.,-]/g, "").replace(/,/g, ".")),
         )));
 
+  const updatingMessage = useMemo(() => {
+    if (showUnitApproveModal) {
+      return "Mengirim persetujuan unit...";
+    }
+
+    if (showRejectModal) {
+      return "Menyimpan penolakan laporan...";
+    }
+
+    return "Memproses laporan...";
+  }, [showRejectModal, showUnitApproveModal]);
+
   if (loading) {
-    return (
-      <SafeAreaView style={[styles.safeArea, styles.centerContent]}>
-        <ActivityIndicator size="large" color="#1E5BFF" />
-        <Text style={styles.loadingText}>Memuat detail laporan...</Text>
-      </SafeAreaView>
-    );
+    return <ScreenLoader message="Memuat detail laporan..." accentColor="#1E5BFF" />;
   }
 
   if (!report) {
@@ -1023,6 +1027,12 @@ const DetailLaporan: React.FC = () => {
           </View>
         </View>
       </Modal>
+      <BlockingLoader
+        visible={updating}
+        message={updatingMessage}
+        detail="Perubahan status laporan sedang disimpan."
+        accentColor="#1E5BFF"
+      />
     </SafeAreaView>
   );
 };

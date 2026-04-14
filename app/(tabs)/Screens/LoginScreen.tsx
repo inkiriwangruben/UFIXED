@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 
+import BlockingLoader from "@/components/ui/BlockingLoader";
 import { auth } from "@/lib/firebase";
 import {
   LOGIN_ROLE_OPTIONS,
@@ -284,12 +285,17 @@ const LoginScreen: React.FC = () => {
               disabled={loading}
             >
               <Text style={styles.buttonText}>
-                {loading ? "Memuat..." : "Masuk"}
+                {loading ? "Memverifikasi..." : "Masuk"}
               </Text>
             </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
+      <BlockingLoader
+        visible={loading}
+        message="Memverifikasi akun..."
+        accentColor="#1E5BFF"
+      />
     </SafeAreaView>
   );
 };
