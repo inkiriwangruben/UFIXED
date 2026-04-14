@@ -1,11 +1,9 @@
 import { formatPriorityLabel } from "@/app/utils/priority";
 import {
-  getUnitLabel,
-  getWorkflowStageLabel,
-  normalizeWorkflowReport,
-  type UnitTarget,
-  type WorkflowStage,
-  type WorkflowState,
+    normalizeWorkflowReport,
+    type UnitTarget,
+    type WorkflowStage,
+    type WorkflowState
 } from "@/app/utils/workflow";
 import { db } from "@/lib/firebase";
 import { LOGIN_ROUTE, signOutCurrentUser } from "@/lib/session";
@@ -15,16 +13,17 @@ import { useRouter } from "expo-router";
 import { collection, onSnapshot } from "firebase/firestore";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Alert,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
+
+import ScreenLoader from "@/components/ui/ScreenLoader";
 
 type AdminStatus = "semua" | "pending" | "verifikasi";
 type ConfirmationCategory = "it" | "non-it";
@@ -131,7 +130,7 @@ const DashboardAdmin: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (activeTab !== "pending") {
+    if (activeTab === "semua") {
       setConfirmationCategory("it");
     }
   }, [activeTab]);
@@ -151,6 +150,19 @@ const DashboardAdmin: React.FC = () => {
     [confirmationCategory, pendingLaporan],
   );
 
+  const completedLaporan = useMemo(
+    () => visibleLaporan.filter((item) => item.workflowStage === "done"),
+    [visibleLaporan],
+  );
+
+  const filteredCompletedLaporan = useMemo(
+    () =>
+      completedLaporan.filter((item) =>
+        matchesConfirmationCategory(item.unitTarget, confirmationCategory),
+      ),
+    [completedLaporan, confirmationCategory],
+  );
+
   const filteredLaporan = useMemo(() => {
     if (activeTab === "semua") {
       return visibleLaporan;
@@ -160,8 +172,8 @@ const DashboardAdmin: React.FC = () => {
       return filteredPendingLaporan;
     }
 
-    return visibleLaporan.filter((item) => item.workflowStage === "done");
-  }, [activeTab, filteredPendingLaporan, visibleLaporan]);
+    return filteredCompletedLaporan;
+  }, [activeTab, filteredCompletedLaporan, filteredPendingLaporan, visibleLaporan]);
 
   const summary = useMemo(
     () => ({
@@ -184,10 +196,11 @@ const DashboardAdmin: React.FC = () => {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.safeArea, styles.centerContent]}>
-        <ActivityIndicator size="large" color="#7C3AED" />
-        <Text style={styles.loadingText}>Memuat data laporan...</Text>
-      </SafeAreaView>
+      <ScreenLoader
+        message="Memuat data laporan..."
+        accentColor="#7C3AED"
+        backgroundColor="#F8FAFC"
+      />
     );
   }
 
@@ -293,7 +306,7 @@ const DashboardAdmin: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          {activeTab === "pending" ? (
+          {activeTab !== "semua" ? (
             <View style={styles.categoryFilterRow}>
               <TouchableOpacity
                 style={[
@@ -381,10 +394,7 @@ const DashboardAdmin: React.FC = () => {
                   {item.description}
                 </Text>
 
-                <Text style={styles.reportDescription} numberOfLines={1}>
-                  Tahap: {getWorkflowStageLabel(item.workflowStage, item.workflowState)} -
-                  {" "}Tujuan: {getUnitLabel(item.unitTarget)}
-                </Text>
+                {/* Tahap & Tujuan removed per user request */}
 
                 <View style={styles.reportFooterRow}>
                   <View style={styles.reportMetaRow}>

@@ -23,9 +23,10 @@ import {
   Text,
   TouchableOpacity,
   View,
-  ActivityIndicator,
   Alert,
 } from "react-native";
+
+import ScreenLoader from "@/components/ui/ScreenLoader";
 
 type PelaporTab = "semua" | "proses" | "selesai";
 type PelaporStatus = Exclude<PelaporTab, "semua">;
@@ -192,10 +193,11 @@ const DashboardPelapor: React.FC = () => {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.safeArea, styles.centerContent]}>
-        <ActivityIndicator size="large" color="#7C3AED" />
-        <Text style={styles.loadingText}>Memuat data laporan...</Text>
-      </SafeAreaView>
+      <ScreenLoader
+        message="Memuat data laporan..."
+        accentColor="#7C3AED"
+        backgroundColor="#EEF2FF"
+      />
     );
   }
 

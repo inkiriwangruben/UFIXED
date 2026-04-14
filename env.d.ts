@@ -7,5 +7,6 @@ declare namespace NodeJS {
     EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID?: string;
     EXPO_PUBLIC_FIREBASE_APP_ID?: string;
     EXPO_PUBLIC_UPLOAD_API_URL?: string;
+    EXPO_PUBLIC_SERVER_API_URL?: string;
   }
 }

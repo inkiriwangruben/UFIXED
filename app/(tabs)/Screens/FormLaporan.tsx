@@ -23,11 +23,13 @@ import {
   View,
 } from "react-native";
 import { auth, db } from "@/lib/firebase";
+import { getServerApiBaseUrl } from "@/lib/server-api";
 import { getWorkflowDefaults } from "@/app/utils/workflow";
 import {
   getDefaultNameFromEmail,
   getUserProfileByUid,
 } from "@/lib/user-profile";
+import BlockingLoader from "@/components/ui/BlockingLoader";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -40,18 +42,29 @@ type LocalPhoto = {
 };
 
 const MAX_PHOTOS = 3;
-const getUploadApiBaseUrl = () => {
-  const fromEnv = process.env.EXPO_PUBLIC_UPLOAD_API_URL?.trim();
 
-  if (fromEnv) {
-    return fromEnv.replace(/\/$/, "");
+const getUploadErrorMessage = (
+  payload: Record<string, any> | null,
+  fallbackMessage: string,
+) => {
+  const message =
+    typeof payload?.message === "string" ? payload.message.trim() : "";
+  const detail =
+    typeof payload?.error === "string" ? payload.error.trim() : "";
+
+  if (message && detail && detail !== message) {
+    return `${message} Detail: ${detail}`;
   }
 
-  if (Platform.OS === "android") {
-    return "http://10.0.2.2:8080";
+  if (message) {
+    return message;
   }
 
-  return "http://localhost:8080";
+  if (detail) {
+    return detail;
+  }
+
+  return fallbackMessage;
 };
 
 const FormLaporan: React.FC = () => {
@@ -210,7 +223,7 @@ const FormLaporan: React.FC = () => {
   const uploadSinglePhoto = async (photo: LocalPhoto) => {
     try {
       const response = await FileSystem.uploadAsync(
-        `${getUploadApiBaseUrl()}/uploads/report-image`,
+        `${getServerApiBaseUrl()}/uploads/report-image`,
         photo.uri,
         {
           fieldName: "photo",
@@ -229,7 +242,7 @@ const FormLaporan: React.FC = () => {
       }
 
       if (response.status < 200 || response.status >= 300) {
-        throw new Error(payload?.message || "Upload foto gagal.");
+        throw new Error(getUploadErrorMessage(payload, "Upload foto gagal."));
       }
 
       if (!payload?.photo?.url) {
@@ -242,7 +255,7 @@ const FormLaporan: React.FC = () => {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      const response = await fetch(`${getUploadApiBaseUrl()}/uploads/report-image`, {
+      const response = await fetch(`${getServerApiBaseUrl()}/uploads/report-image`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -265,7 +278,10 @@ const FormLaporan: React.FC = () => {
       }
 
       if (!response.ok) {
-        const fallbackMessage = payload?.message || "Upload foto gagal.";
+        const fallbackMessage = getUploadErrorMessage(
+          payload,
+          "Upload foto gagal.",
+        );
         const nativeMessage =
           nativeUploadError instanceof Error ? nativeUploadError.message : "";
 
@@ -668,11 +684,17 @@ const FormLaporan: React.FC = () => {
             disabled={isSubmitting}
           >
             <Text style={styles.submitText}>
-              {isSubmitting ? "Menyimpan..." : "Kirim Laporan"}
+              {isSubmitting ? "Mengirim..." : "Kirim Laporan"}
             </Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+      <BlockingLoader
+        visible={isSubmitting}
+        message="Mengirim laporan..."
+        detail="Foto dan data laporan sedang diproses."
+        accentColor="#1E5BFF"
+      />
     </SafeAreaView>
   );
 };
