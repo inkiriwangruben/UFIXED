@@ -214,9 +214,18 @@ const DashboardPelapor: React.FC = () => {
               <View style={styles.avatarCircle}>
                 <Feather name="user" size={20} color="#FFFFFF" />
               </View>
-              <View>
-                <Text style={styles.headerWelcome}>Selamat datang</Text>
-                <Text style={styles.headerName}>{currentName}</Text>
+              <View style={styles.headerTextWrap}>
+                <Text style={styles.headerWelcome} numberOfLines={1}>
+                  Selamat datang
+                </Text>
+                <Text
+                  style={styles.headerName}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
+                  {currentName}
+                </Text>
               </View>
             </View>
 
@@ -417,20 +426,14 @@ const DashboardPelapor: React.FC = () => {
 
                 <View style={styles.reportFooterRow}>
                   <View style={styles.reportMetaRow}>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 12,
-                      }}
-                    >
-                      <View style={styles.reportMetaItem}>
+                    <View style={styles.reportMetaGroup}>
+                      <View style={[styles.reportMetaItem, styles.reportMetaItemAuthor]}>
                         <Feather name="user" size={12} color="#6B7280" />
                         <Text style={styles.reportMetaText} numberOfLines={1}>
                           {currentName}
                         </Text>
                       </View>
-                      <View style={styles.reportMetaItem}>
+                      <View style={[styles.reportMetaItem, styles.reportMetaItemDate]}>
                         <Feather name="calendar" size={12} color="#6B7280" />
                         <Text style={styles.reportMetaText}>{item.date}</Text>
                       </View>
@@ -511,10 +514,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: 12,
   },
   headerUserRow: {
     flexDirection: "row",
     alignItems: "center",
+    flex: 1,
+    minWidth: 0,
   },
   avatarCircle: {
     width: 40,
@@ -525,19 +531,27 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 10,
   },
+  headerTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
   headerWelcome: {
     color: "#E5ECFF",
     fontSize: 12,
   },
   headerName: {
     color: "#FFFFFF",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
+    lineHeight: 20,
+    flexShrink: 1,
   },
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    flexShrink: 0,
+    marginLeft: 4,
   },
   headerIconButton: {
     width: 32,
@@ -761,11 +775,24 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     width: "100%",
   },
+  reportMetaGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+    minWidth: 0,
+    marginRight: 10,
+  },
   reportMetaItem: {
     flexDirection: "row",
     alignItems: "center",
-    flexShrink: 1,
-    maxWidth: "52%",
+    minWidth: 0,
+  },
+  reportMetaItemAuthor: {
+    flex: 1,
+  },
+  reportMetaItemDate: {
+    flexShrink: 0,
   },
   reportMetaText: {
     marginLeft: 4,

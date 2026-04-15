@@ -27,6 +27,7 @@ import {
   getRoleLabel,
   type CanonicalUserRole,
 } from "@/lib/roles";
+import { requestPasswordReset } from "@/lib/session";
 import { mapUserDocumentToProfile } from "@/lib/user-profile";
 
 interface UserItem {
@@ -38,6 +39,32 @@ interface UserItem {
 
 const NAME_REGEX = /^[\p{L}\s]+$/u;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_PELAPOR_NAME_LETTERS = 8;
+
+const isLetterCharacter = (value: string) => /\p{L}/u.test(value);
+
+const getPelaporNameLetterCount = (value: string) =>
+  Array.from(value).filter((character) => isLetterCharacter(character)).length;
+
+const limitPelaporNameLetters = (value: string) => {
+  let letterCount = 0;
+  let result = "";
+
+  for (const character of Array.from(value)) {
+    if (isLetterCharacter(character)) {
+      if (letterCount >= MAX_PELAPOR_NAME_LETTERS) {
+        continue;
+      }
+
+      letterCount += 1;
+    }
+
+    result += character;
+  }
+
+  return result;
+};
+
 const getNameValidationError = (
   value: string,
   role: CanonicalUserRole | "",
@@ -60,6 +87,10 @@ const getNameValidationError = (
     return "Nama hanya boleh berisi huruf dan spasi.";
   }
 
+  if (getPelaporNameLetterCount(trimmedValue) > MAX_PELAPOR_NAME_LETTERS) {
+    return `Nama pelapor maksimal ${MAX_PELAPOR_NAME_LETTERS} huruf.`;
+  }
+
   return "";
 };
 
@@ -74,6 +105,24 @@ const getPasswordValidationError = (value: string, touched: boolean) => {
 
   if (!/[A-Z]/.test(value) || !/[a-z]/.test(value) || !/\d/.test(value)) {
     return "Password harus mengandung huruf besar, huruf kecil, dan angka.";
+  }
+
+  return "";
+};
+
+const getManagedEmailValidationError = (value: string, touched: boolean) => {
+  const trimmedValue = value.trim().toLowerCase();
+
+  if (!touched && !trimmedValue) {
+    return "";
+  }
+
+  if (!trimmedValue) {
+    return "Email wajib diisi.";
+  }
+
+  if (!EMAIL_REGEX.test(trimmedValue)) {
+    return "Format email tidak valid.";
   }
 
   return "";
@@ -115,8 +164,10 @@ const KelolaUserScreen: React.FC = () => {
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [nameError, setNameError] = useState("");
+  const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
+  const [emailTouched, setEmailTouched] = useState(false);
   const [passwordTouched, setPasswordTouched] = useState(false);
 
   useEffect(() => {
@@ -168,8 +219,10 @@ const KelolaUserScreen: React.FC = () => {
     setNewRole("");
     setShowRoleMenu(false);
     setNameError("");
+    setEmailError("");
     setPasswordError("");
     setNameTouched(false);
+    setEmailTouched(false);
     setPasswordTouched(false);
   };
 
@@ -225,18 +278,21 @@ const KelolaUserScreen: React.FC = () => {
     const normalizedEmail = newEmail.trim().toLowerCase();
     const normalizedName = newName.trim();
     const nextNameError = getNameValidationError(newName, newRole, true);
+    const nextEmailError = getManagedEmailValidationError(newEmail, true);
     const nextPasswordError = getPasswordValidationError(newPassword, true);
 
     setNameTouched(newRole === "pelapor");
+    setEmailTouched(true);
     setPasswordTouched(true);
     setNameError(nextNameError);
+    setEmailError(nextEmailError);
     setPasswordError(nextPasswordError);
 
     if (!normalizedEmail || !newPassword.trim() || !newRole) {
       return;
     }
 
-    if (nextNameError || nextPasswordError) {
+    if (nextNameError || nextEmailError || nextPasswordError) {
       return;
     }
 
@@ -259,8 +315,20 @@ const KelolaUserScreen: React.FC = () => {
         ...(newRole === "pelapor" ? { name: normalizedName } : {}),
       });
 
+      let resetNotice =
+        "Akun berhasil dibuat. Email reset password telah dikirim ke inbox pengguna.";
+
+      try {
+        await requestPasswordReset(normalizedEmail);
+      } catch (resetError) {
+        console.error("Error sending password reset email:", resetError);
+        resetNotice =
+          "Akun berhasil dibuat, tetapi email reset password belum berhasil dikirim. Pengguna masih bisa meminta reset dari halaman login.";
+      }
+
       resetAddForm();
       setShowAddModal(false);
+      Alert.alert("Berhasil", resetNotice);
     } catch (error: unknown) {
       console.error("Error adding user:", error);
       const errorMessage =
@@ -279,6 +347,7 @@ const KelolaUserScreen: React.FC = () => {
     !newEmail.trim() ||
     !newRole ||
     Boolean(getNameValidationError(newName, newRole, nameTouched)) ||
+    Boolean(getManagedEmailValidationError(newEmail, emailTouched)) ||
     Boolean(getPasswordValidationError(newPassword, passwordTouched)) ||
     (newRole === "pelapor" && !newName.trim()) ||
     !newPassword;
@@ -332,9 +401,9 @@ const KelolaUserScreen: React.FC = () => {
         {userList.length === 0 ? (
           <View style={styles.emptyCard}>
             <Feather name="users" size={28} color="#9CA3AF" />
-            <Text style={styles.emptyTitle}>Belum ada user demo</Text>
+            <Text style={styles.emptyTitle}>Belum ada user</Text>
             <Text style={styles.emptySubtitle}>
-              Tambahkan akun terlebih dahulu agar login per role bisa diuji.
+              Tambahkan akun terlebih dahulu agar pengguna bisa login sesuai role.
             </Text>
           </View>
         ) : (
@@ -414,11 +483,18 @@ const KelolaUserScreen: React.FC = () => {
                     setNameError(getNameValidationError(newName, newRole, true));
                   }}
                   onChangeText={(value) => {
-                    setNewName(value);
+                    const limitedValue = limitPelaporNameLetters(value);
+
+                    setNewName(limitedValue);
                     setNameTouched(true);
-                    setNameError(getNameValidationError(value, newRole, true));
+                    setNameError(
+                      getNameValidationError(limitedValue, newRole, true),
+                    );
                   }}
                 />
+                <Text style={styles.modalHintText}>
+                  Maksimal {MAX_PELAPOR_NAME_LETTERS} huruf.
+                </Text>
                 {nameError ? (
                   <Text style={styles.modalErrorText}>{nameError}</Text>
                 ) : null}
@@ -428,14 +504,31 @@ const KelolaUserScreen: React.FC = () => {
             <View style={styles.modalFieldGroup}>
               <Text style={styles.modalLabel}>Email</Text>
               <TextInput
-                style={styles.modalInput}
-                placeholder="email@unklab.ac.id"
+                style={[
+                  styles.modalInput,
+                  emailError ? styles.modalInputError : undefined,
+                ]}
+                placeholder="email@domain.com"
                 placeholderTextColor="#9CA3AF"
                 keyboardType="email-address"
                 autoCapitalize="none"
                 value={newEmail}
-                onChangeText={setNewEmail}
+                onBlur={() => {
+                  setEmailTouched(true);
+                  setEmailError(getManagedEmailValidationError(newEmail, true));
+                }}
+                onChangeText={(value) => {
+                  setNewEmail(value);
+                  setEmailTouched(true);
+                  setEmailError(getManagedEmailValidationError(value, true));
+                }}
               />
+              <Text style={styles.modalHintText}>
+                Gunakan email aktif yang bisa menerima email reset password.
+              </Text>
+              {emailError ? (
+                <Text style={styles.modalErrorText}>{emailError}</Text>
+              ) : null}
             </View>
 
             <View style={styles.modalFieldGroup}>
@@ -803,6 +896,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     color: "#DC2626",
+  },
+  modalHintText: {
+    marginTop: 6,
+    fontSize: 12,
+    color: "#6B7280",
   },
   modalSelect: {
     borderRadius: 10,

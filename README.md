@@ -19,24 +19,35 @@ File rules ada di `firestore.rules`. Untuk deploy ke project Firebase:
 npx firebase-tools deploy --only firestore:rules
 ```
 
-## Upload Gambar Dengan ImageKit
+## Upload Gambar Dengan Supabase Storage
 
 Backend upload ada di folder `server`.
 
 1. Masuk ke folder `server`.
 2. Salin `server/.env.example` menjadi `server/.env`.
-3. Isi `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, dan `IMAGEKIT_URL_ENDPOINT` dari dashboard ImageKit.
-4. Install dependency backend:
+3. Siapkan project Supabase dan buka menu `Storage`.
+4. Isi `SUPABASE_URL` dengan project URL dari Supabase.
+5. Isi `SUPABASE_SECRET_KEY` dengan secret key server-side. Jika belum punya, Anda bisa pakai legacy `SUPABASE_SERVICE_ROLE_KEY` hanya di backend.
+6. Isi `SUPABASE_STORAGE_BUCKET` dengan nama bucket file, misalnya `laporan`.
+7. Server akan mencoba membuat bucket publik otomatis saat pengecekan pertama atau upload pertama jika bucket belum ada.
+   `FIREBASE_SERVICE_ACCOUNT_PATH` hanya diperlukan bila Anda masih memakai endpoint admin user atau script migrasi Firebase.
+8. Install dependency backend:
 
 ```bash
 cd server
 npm install
 ```
 
-5. Jalankan backend upload:
+9. Jalankan backend upload:
 
 ```bash
 npm run dev
+```
+
+Untuk cek koneksi bucket Supabase Storage:
+
+```bash
+npm run storage:check
 ```
 
 Endpoint yang tersedia:
@@ -44,7 +55,7 @@ Endpoint yang tersedia:
 - `GET /` untuk cek server aktif
 - `GET /uploads/health` untuk cek service upload
 - `POST /uploads/report-image` untuk upload foto laporan
-- `DELETE /uploads/report-image/:fileId` untuk hapus file dari ImageKit
+- `DELETE /uploads/report-image/:fileId` untuk hapus file dari Supabase Storage
 
 ## Migrasi `laporan` ke `reports`
 

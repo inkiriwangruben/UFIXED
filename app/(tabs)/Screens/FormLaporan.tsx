@@ -43,6 +43,17 @@ type LocalPhoto = {
 
 const MAX_PHOTOS = 3;
 
+const isGenericUploadMessage = (message: string) => {
+  const normalizedMessage = message.trim().toLowerCase();
+
+  return (
+    normalizedMessage === "upload foto gagal." ||
+    normalizedMessage === "upload foto gagal" ||
+    normalizedMessage === "terjadi kesalahan saat upload." ||
+    normalizedMessage === "terjadi kesalahan saat upload"
+  );
+};
+
 const getUploadErrorMessage = (
   payload: Record<string, any> | null,
   fallbackMessage: string,
@@ -51,6 +62,10 @@ const getUploadErrorMessage = (
     typeof payload?.message === "string" ? payload.message.trim() : "";
   const detail =
     typeof payload?.error === "string" ? payload.error.trim() : "";
+
+  if (message && !isGenericUploadMessage(message)) {
+    return message;
+  }
 
   if (message && detail && detail !== message) {
     return `${message} Detail: ${detail}`;
@@ -65,6 +80,33 @@ const getUploadErrorMessage = (
   }
 
   return fallbackMessage;
+};
+
+type UploadResponseError = Error & {
+  isUploadResponseError: true;
+};
+
+const createUploadResponseError = (message: string): UploadResponseError => {
+  const error = new Error(message) as UploadResponseError;
+  error.isUploadResponseError = true;
+  return error;
+};
+
+const isUploadResponseError = (error: unknown): error is UploadResponseError =>
+  error instanceof Error &&
+  "isUploadResponseError" in error &&
+  error.isUploadResponseError === true;
+
+const parseUploadPayload = (rawBody: string) => {
+  if (!rawBody) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawBody) as Record<string, any>;
+  } catch {
+    return { message: rawBody };
+  }
 };
 
 const FormLaporan: React.FC = () => {
@@ -221,6 +263,18 @@ const FormLaporan: React.FC = () => {
   };
 
   const uploadSinglePhoto = async (photo: LocalPhoto) => {
+    const parseUploadedPhoto = (
+      payload: Record<string, any> | null,
+    ) => {
+      if (!payload?.photo?.url) {
+        throw createUploadResponseError(
+          "Upload foto tidak mengembalikan URL yang valid.",
+        );
+      }
+
+      return payload.photo;
+    };
+
     try {
       const response = await FileSystem.uploadAsync(
         `${getServerApiBaseUrl()}/uploads/report-image`,
@@ -233,24 +287,20 @@ const FormLaporan: React.FC = () => {
         },
       );
 
-      let payload: Record<string, any> | null = null;
-
-      try {
-        payload = response.body ? JSON.parse(response.body) : null;
-      } catch {
-        payload = response.body ? { message: response.body } : null;
-      }
+      const payload = parseUploadPayload(response.body);
 
       if (response.status < 200 || response.status >= 300) {
-        throw new Error(getUploadErrorMessage(payload, "Upload foto gagal."));
+        throw createUploadResponseError(
+          getUploadErrorMessage(payload, "Upload foto gagal."),
+        );
       }
 
-      if (!payload?.photo?.url) {
-        throw new Error("Upload foto tidak mengembalikan URL yang valid.");
-      }
-
-      return payload.photo;
+      return parseUploadedPhoto(payload);
     } catch (nativeUploadError) {
+      if (isUploadResponseError(nativeUploadError)) {
+        throw nativeUploadError;
+      }
+
       const base64 = await FileSystem.readAsStringAsync(photo.uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
@@ -269,34 +319,15 @@ const FormLaporan: React.FC = () => {
       });
 
       const rawBody = await response.text();
-      let payload: Record<string, any> | null = null;
-
-      try {
-        payload = rawBody ? JSON.parse(rawBody) : null;
-      } catch {
-        payload = rawBody ? { message: rawBody } : null;
-      }
+      const payload = parseUploadPayload(rawBody);
 
       if (!response.ok) {
-        const fallbackMessage = getUploadErrorMessage(
-          payload,
-          "Upload foto gagal.",
-        );
-        const nativeMessage =
-          nativeUploadError instanceof Error ? nativeUploadError.message : "";
-
-        throw new Error(
-          nativeMessage
-            ? `${fallbackMessage} Detail: ${nativeMessage}`
-            : fallbackMessage,
+        throw createUploadResponseError(
+          getUploadErrorMessage(payload, "Upload foto gagal."),
         );
       }
 
-      if (!payload?.photo?.url) {
-        throw new Error("Upload foto tidak mengembalikan URL yang valid.");
-      }
-
-      return payload.photo;
+      return parseUploadedPhoto(payload);
     }
   };
 

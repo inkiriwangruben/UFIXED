@@ -398,18 +398,14 @@ const DashboardBusinessOffice: React.FC = () => {
 
                 <View style={styles.reportFooterRow}>
                   <View style={styles.reportMetaRow}>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 12,
-                      }}
-                    >
-                      <View style={styles.reportMetaItem}>
+                    <View style={styles.reportMetaGroup}>
+                      <View style={[styles.reportMetaItem, styles.reportMetaItemAuthor]}>
                         <Feather name="user" size={12} color="#6B7280" />
-                        <Text style={styles.reportMetaText}>{item.author}</Text>
+                        <Text style={styles.reportMetaText} numberOfLines={1}>
+                          {item.author}
+                        </Text>
                       </View>
-                      <View style={styles.reportMetaItem}>
+                      <View style={[styles.reportMetaItem, styles.reportMetaItemDate]}>
                         <Feather name="calendar" size={12} color="#6B7280" />
                         <Text style={styles.reportMetaText}>{item.date}</Text>
                       </View>
@@ -692,14 +688,30 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     width: "100%",
   },
+  reportMetaGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+    minWidth: 0,
+    marginRight: 10,
+  },
   reportMetaItem: {
     flexDirection: "row",
     alignItems: "center",
+    minWidth: 0,
+  },
+  reportMetaItemAuthor: {
+    flex: 1,
+  },
+  reportMetaItemDate: {
+    flexShrink: 0,
   },
   reportMetaText: {
     marginLeft: 4,
     fontSize: 11,
     color: "#6B7280",
+    flexShrink: 1,
   },
   priorityBadge: {
     paddingHorizontal: 6,
