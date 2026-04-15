@@ -1,11 +1,18 @@
 const express = require("express");
 const multer = require("multer");
-const imagekit = require("../imagekit");
+const {
+  checkSupabaseStorageHealth,
+  deleteSupabaseStorageFile,
+  getSafeStorageConfigSnapshot,
+  getStorageUploadAdvice,
+  maxFileSize,
+  normalizeStorageError,
+  uploadBufferToSupabaseStorage,
+} = require("../supabase-storage");
 
 const router = express.Router();
 
 const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/jpg"]);
-const maxFileSize = 10 * 1024 * 1024;
 
 const getErrorMessage = (error) => {
   if (error instanceof Error && typeof error.message === "string") {
@@ -24,35 +31,27 @@ const getErrorMessage = (error) => {
   return "Terjadi kesalahan saat upload.";
 };
 
-const serializeError = (error) => {
-  if (error instanceof Error) {
-    return {
-      message: error.message,
-      stack: error.stack,
-    };
-  }
-
-  if (error && typeof error === "object") {
-    return { ...error };
-  }
-
-  return {
-    message: String(error),
-  };
-};
-
 const getReadableUploadError = (error) => {
   const detail = getErrorMessage(error);
 
-  if (/cannot be authenticated/i.test(detail)) {
-    return "Upload gagal karena kredensial ImageKit tidak valid. Periksa konfigurasi IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY, dan IMAGEKIT_URL_ENDPOINT.";
+  if (/bucket/i.test(detail) && /not found/i.test(detail)) {
+    return "Upload gagal karena bucket Supabase Storage tidak ditemukan.";
   }
 
-  if (/Missing required parameter/i.test(detail)) {
-    return "Upload gagal karena ada parameter ImageKit yang belum lengkap.";
+  if (/row level security/i.test(detail) || /permission/i.test(detail)) {
+    return "Upload gagal karena server tidak memiliki akses yang cukup ke Supabase Storage.";
   }
 
   return detail;
+};
+
+const getBufferFromBase64 = (value) => {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error("Data base64 foto tidak valid.");
+  }
+
+  const sanitized = value.replace(/^data:[^;]+;base64,/, "").trim();
+  return Buffer.from(sanitized, "base64");
 };
 
 const upload = multer({
@@ -68,10 +67,17 @@ const upload = multer({
   },
 });
 
-router.get("/health", (_req, res) => {
-  res.status(200).json({
-    ok: true,
-    message: "Upload service is ready.",
+router.get("/health", async (_req, res) => {
+  const storageCheck = await checkSupabaseStorageHealth();
+  const statusCode = storageCheck.ok ? 200 : 503;
+
+  res.status(statusCode).json({
+    ok: storageCheck.ok,
+    message: storageCheck.ok
+      ? "Upload service is ready."
+      : "Upload service cannot access Supabase Storage.",
+    config: getSafeStorageConfigSnapshot(),
+    storage: storageCheck,
   });
 });
 
@@ -88,12 +94,10 @@ router.post("/report-image", upload.single("photo"), async (req, res) => {
           ? req.body.name.trim().replace(/\s+/g, "-")
           : `laporan-${Date.now()}.${extension}`;
 
-      const result = await imagekit.upload({
-        file: req.body.base64,
+      const result = await uploadBufferToSupabaseStorage({
+        buffer: getBufferFromBase64(req.body.base64),
         fileName: safeName,
-        folder: "/laporan",
-        useUniqueFileName: true,
-        tags: ["ufixed", "laporan"],
+        mimeType: providedType,
       });
 
       return res.status(200).json({
@@ -117,12 +121,10 @@ router.post("/report-image", upload.single("photo"), async (req, res) => {
     const safeOriginalName = req.file.originalname.replace(/\s+/g, "-");
     const fileName = `${Date.now()}-${safeOriginalName}`;
 
-    const result = await imagekit.upload({
-      file: req.file.buffer,
+    const result = await uploadBufferToSupabaseStorage({
+      buffer: req.file.buffer,
       fileName,
-      folder: "/laporan",
-      useUniqueFileName: true,
-      tags: ["ufixed", "laporan"],
+      mimeType: req.file.mimetype,
     });
 
     return res.status(200).json({
@@ -137,23 +139,19 @@ router.post("/report-image", upload.single("photo"), async (req, res) => {
     });
   } catch (error) {
     const detail = getReadableUploadError(error);
-    const errorPayload = serializeError(error);
+    const errorPayload = normalizeStorageError(error);
+    const advice = getStorageUploadAdvice(errorPayload.message);
 
-    console.error("ImageKit upload failed:", {
+    console.error("Supabase Storage upload failed:", {
       ...errorPayload,
       route: "POST /uploads/report-image",
     });
 
     return res.status(502).json({
       message: detail,
-      error: getErrorMessage(error),
-      help:
-        error &&
-        typeof error === "object" &&
-        "help" in error &&
-        typeof error.help === "string"
-          ? error.help
-          : undefined,
+      error: errorPayload.message,
+      help: errorPayload.help,
+      advice: advice.length > 0 ? advice : undefined,
     });
   }
 });
@@ -168,16 +166,16 @@ router.delete("/report-image/:fileId", async (req, res) => {
       });
     }
 
-    await imagekit.deleteFile(fileId);
+    await deleteSupabaseStorageFile(fileId);
 
     return res.status(200).json({
-      message: "File berhasil dihapus dari ImageKit.",
+      message: "File berhasil dihapus dari Supabase Storage.",
     });
   } catch (error) {
     const detail = getErrorMessage(error);
-    const errorPayload = serializeError(error);
+    const errorPayload = normalizeStorageError(error);
 
-    console.error("ImageKit delete failed:", {
+    console.error("Supabase Storage delete failed:", {
       ...errorPayload,
       route: "DELETE /uploads/report-image/:fileId",
     });

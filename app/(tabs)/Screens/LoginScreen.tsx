@@ -22,7 +22,7 @@ import {
   getLoginRoleLabel,
   type CanonicalUserRole,
 } from "@/lib/roles";
-import { signOutCurrentUser } from "@/lib/session";
+import { requestPasswordReset, signOutCurrentUser } from "@/lib/session";
 import { getUserProfileByUid } from "@/lib/user-profile";
 
 const getInlineLoginError = (error: unknown) => {
@@ -53,6 +53,7 @@ const LoginScreen: React.FC = () => {
     useState<CanonicalUserRole>("pelapor");
   const [roleModalVisible, setRoleModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resettingPassword, setResettingPassword] = useState(false);
   const [loginError, setLoginError] = useState("");
 
   const router = useRouter();
@@ -152,6 +153,46 @@ const LoginScreen: React.FC = () => {
 
   const handleSelectRole = () => {
     setRoleModalVisible((prev) => !prev);
+  };
+
+  const handleRequestPasswordReset = async () => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      setLoginError("Masukkan email terlebih dahulu untuk reset password.");
+      return;
+    }
+
+    try {
+      setResettingPassword(true);
+      setLoginError("");
+      await requestPasswordReset(normalizedEmail);
+      Alert.alert(
+        "Email reset terkirim",
+        "Silakan cek inbox email Anda untuk mengatur ulang password.",
+      );
+    } catch (error) {
+      const errorCode =
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        typeof error.code === "string"
+          ? error.code
+          : "";
+
+      if (errorCode === "auth/user-not-found" || errorCode === "auth/invalid-email") {
+        setLoginError("Email tidak ditemukan atau formatnya tidak valid.");
+        return;
+      }
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Gagal mengirim email reset password.";
+      Alert.alert("Reset password gagal", message);
+    } finally {
+      setResettingPassword(false);
+    }
   };
 
   return (
@@ -279,6 +320,15 @@ const LoginScreen: React.FC = () => {
             </View>
 
             <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.forgotPasswordButton}
+              onPress={handleRequestPasswordReset}
+              disabled={loading || resettingPassword}
+            >
+              <Text style={styles.forgotPasswordText}>Lupa Password?</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               activeOpacity={0.9}
               style={[styles.button, loading && styles.buttonDisabled]}
               onPress={handleLogin}
@@ -292,8 +342,8 @@ const LoginScreen: React.FC = () => {
         </View>
       </ScrollView>
       <BlockingLoader
-        visible={loading}
-        message="Memverifikasi akun..."
+        visible={loading || resettingPassword}
+        message={resettingPassword ? "Mengirim email reset..." : "Memverifikasi akun..."}
         accentColor="#1E5BFF"
       />
     </SafeAreaView>
@@ -475,6 +525,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#EF4444",
+  },
+  forgotPasswordButton: {
+    alignSelf: "flex-end",
+    marginTop: -4,
+    marginBottom: 8,
+    paddingVertical: 4,
+  },
+  forgotPasswordText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#1E5BFF",
   },
 });
 

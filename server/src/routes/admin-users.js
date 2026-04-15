@@ -12,6 +12,10 @@ const MANAGEABLE_ROLES = new Set([
 ]);
 const NAME_REGEX = /^[\p{L}\s]+$/u;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_PELAPOR_NAME_LETTERS = 8;
+
+const getPelaporNameLetterCount = (value = "") =>
+  Array.from(value).filter((character) => /\p{L}/u.test(character)).length;
 
 const normalizeEmail = (value = "") =>
   typeof value === "string" && value.trim() ? value.trim().toLowerCase() : "";
@@ -112,6 +116,12 @@ router.post("/users", requireAdmin, async (req, res) => {
     if (!NAME_REGEX.test(requestedName)) {
       return res.status(400).json({
         message: "Nama hanya boleh berisi huruf dan spasi.",
+      });
+    }
+
+    if (getPelaporNameLetterCount(requestedName) > MAX_PELAPOR_NAME_LETTERS) {
+      return res.status(400).json({
+        message: `Nama pelapor maksimal ${MAX_PELAPOR_NAME_LETTERS} huruf.`,
       });
     }
   }
