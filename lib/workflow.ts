@@ -41,7 +41,6 @@ export interface WorkflowReport {
   unitTarget: UnitTarget;
   rejectionReason?: string;
   rejectedByRole?: string;
-  
   photos: ReportPhoto[];
   createdAtValue?: number | null;
   approvedByAdminAtValue?: number | null;
@@ -99,15 +98,27 @@ const normalizeLegacyWorkflow = (
   const actionState = (data.actionState as string) || "";
 
   if (status === "ditolak" || actionState === "rejected") {
-    return { workflowStage: "rejected", workflowState: "rejected", status: "ditolak" };
+    return {
+      workflowStage: "rejected",
+      workflowState: "rejected",
+      status: "ditolak",
+    };
   }
 
   if (status === "selesai" || actionState === "completed") {
-    return { workflowStage: "done", workflowState: "completed", status: "selesai" };
+    return {
+      workflowStage: "done",
+      workflowState: "completed",
+      status: "selesai",
+    };
   }
 
   if (actionState === "repairing") {
-    return { workflowStage: "unit_repair", workflowState: "repairing", status: "diproses" };
+    return {
+      workflowStage: "unit_repair",
+      workflowState: "repairing",
+      status: "diproses",
+    };
   }
 
   if (actionState === "accepted") {

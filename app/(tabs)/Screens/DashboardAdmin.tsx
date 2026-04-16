@@ -1,10 +1,10 @@
-import { formatPriorityLabel } from "@/app/utils/priority";
+import { formatPriorityLabel } from "@/lib/priority";
 import {
     normalizeWorkflowReport,
     type UnitTarget,
     type WorkflowStage,
     type WorkflowState
-} from "@/app/utils/workflow";
+} from "@/lib/workflow";
 import { db } from "@/lib/firebase";
 import { LOGIN_ROUTE, signOutCurrentUser } from "@/lib/session";
 import { resolveReportAuthorName } from "@/lib/user-profile";
@@ -14,7 +14,6 @@ import { collection, onSnapshot } from "firebase/firestore";
 import React, { useEffect, useMemo, useState } from "react";
 import {
     Alert,
-    SafeAreaView,
     ScrollView,
     StatusBar,
     StyleSheet,
@@ -22,7 +21,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import ScreenLoader from "@/components/ui/ScreenLoader";
 
 type AdminStatus = "semua" | "pending" | "verifikasi";
@@ -57,6 +56,7 @@ const matchesConfirmationCategory = (
 
 const DashboardAdmin: React.FC = () => {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<AdminStatus>("semua");
   const [confirmationCategory, setConfirmationCategory] =
     useState<ConfirmationCategory>("it");
@@ -205,13 +205,13 @@ const DashboardAdmin: React.FC = () => {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor="#7C3AED" />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: Math.max(insets.top + 8, 18) }]}>
           <View style={styles.headerTopRow}>
             <TouchableOpacity style={styles.backButton} onPress={handleLogout}>
               <Feather name="arrow-left" size={28} color="#FFFFFF" />
@@ -472,10 +472,10 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+    backgroundColor: "#F3F4F6",
   },
   header: {
     backgroundColor: "#7C3AED",
-    paddingTop: 32,
     paddingHorizontal: 20,
     paddingBottom: 90,
     borderBottomLeftRadius: 32,
@@ -780,3 +780,4 @@ const styles = StyleSheet.create({
 });
 
 export default DashboardAdmin;
+

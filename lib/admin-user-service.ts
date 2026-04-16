@@ -1,12 +1,18 @@
 import type { CanonicalUserRole } from "@/lib/roles";
 import { auth } from "@/lib/firebase";
-import { getServerApiBaseUrl } from "@/lib/server-api";
+import { fetchServerApi } from "@/lib/server-api";
 
 type CreateManagedUserInput = {
   email: string;
-  password: string;
+  password?: string;
   role: Exclude<CanonicalUserRole, "admin">;
   name?: string;
+};
+
+type DeleteManagedUserInput = {
+  id: string;
+  email?: string;
+  role?: CanonicalUserRole;
 };
 
 const getAdminRequestHeaders = async () => {
@@ -47,7 +53,7 @@ const parseApiResponse = async (response: Response) => {
 };
 
 export const createManagedUser = async (input: CreateManagedUserInput) => {
-  const response = await fetch(`${getServerApiBaseUrl()}/admin/users`, {
+  const response = await fetchServerApi("/admin/users", {
     method: "POST",
     headers: await getAdminRequestHeaders(),
     body: JSON.stringify(input),
@@ -56,11 +62,22 @@ export const createManagedUser = async (input: CreateManagedUserInput) => {
   return parseApiResponse(response);
 };
 
-export const deleteManagedUser = async (uid: string) => {
-  const response = await fetch(`${getServerApiBaseUrl()}/admin/users/${uid}`, {
-    method: "DELETE",
-    headers: await getAdminRequestHeaders(),
-  });
+export const deleteManagedUser = async ({
+  id,
+  email,
+  role,
+}: DeleteManagedUserInput) => {
+  const response = await fetchServerApi(
+    `/admin/users/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+      headers: await getAdminRequestHeaders(),
+      body: JSON.stringify({
+        ...(email ? { email } : {}),
+        ...(role ? { role } : {}),
+      }),
+    },
+  );
 
   return parseApiResponse(response);
 };

@@ -2,10 +2,10 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef } from "react";
 import { onAuthStateChanged } from "firebase/auth";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
   Alert,
-  SafeAreaView,
   StyleSheet,
   Text,
   View,
@@ -75,6 +75,7 @@ export default function EntryGateScreen() {
         <View style={styles.logoCircle}>
           <Image
             source={require("@/assets/images/wrench.png")}
+            contentFit="contain"
             style={styles.logoImage}
           />
         </View>
@@ -109,7 +110,6 @@ const styles = StyleSheet.create({
   logoImage: {
     width: 60,
     height: 60,
-    resizeMode: "contain",
   },
   title: {
     fontSize: 28,

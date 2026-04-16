@@ -1,4 +1,4 @@
-import type { UnitTarget } from "@/app/utils/workflow";
+import type { UnitTarget } from "@/lib/workflow";
 import { auth, db } from "@/lib/firebase";
 import type { NotificationStatus } from "@/lib/notifications";
 import { createNotification } from "@/lib/notifications";
@@ -224,3 +224,4 @@ export async function rejectReportAsBusinessOffice(
     status: "ditolak",
   });
 }
+

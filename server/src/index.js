@@ -4,6 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const os = require("os");
 const adminUserRoutes = require("./routes/admin-users");
+const authRoutes = require("./routes/auth");
 const uploadRoutes = require("./routes/upload");
 
 const app = express();
@@ -67,6 +68,7 @@ app.get("/", (_req, res) => {
 
 app.use("/uploads", uploadRoutes);
 app.use("/admin", adminUserRoutes);
+app.use("/auth", authRoutes);
 
 app.use((error, _req, res, _next) => {
   if (error?.name === "MulterError" && error.code === "LIMIT_FILE_SIZE") {

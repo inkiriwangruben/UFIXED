@@ -14,14 +14,13 @@ import { db } from "@/lib/firebase";
 import { createNotification } from "@/lib/notifications";
 import { LOGIN_ROUTE, signOutCurrentUser } from "@/lib/session";
 import { resolveReportAuthorName } from "@/lib/user-profile";
-import { formatPriorityLabel } from "@/app/utils/priority";
+import { formatPriorityLabel } from "@/lib/priority";
 import {
   normalizeWorkflowReport,
   type WorkflowStage,
   type WorkflowState,
-} from "@/app/utils/workflow";
+} from "@/lib/workflow";
 import {
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -30,7 +29,7 @@ import {
   View,
   Alert,
 } from "react-native";
-
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import BlockingLoader from "@/components/ui/BlockingLoader";
 import ScreenLoader from "@/components/ui/ScreenLoader";
 
@@ -53,6 +52,7 @@ interface TukangReport {
 
 const DashboardTukang: React.FC = () => {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TukangTab>("semua");
   const [laporanList, setLaporanList] = useState<TukangReport[]>([]);
   const [loading, setLoading] = useState(true);
@@ -254,13 +254,13 @@ const DashboardTukang: React.FC = () => {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor="#EA580C" />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: Math.max(insets.top + 8, 18) }]}>
           <View style={styles.headerTopRow}>
             <TouchableOpacity
               style={styles.backButton}
@@ -503,10 +503,10 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+    backgroundColor: "#F3F4F6",
   },
   header: {
     backgroundColor: "#EA580C",
-    paddingTop: 32,
     paddingHorizontal: 20,
     paddingBottom: 56,
     borderBottomLeftRadius: 32,
@@ -743,3 +743,4 @@ const styles = StyleSheet.create({
 });
 
 export default DashboardTukang;
+

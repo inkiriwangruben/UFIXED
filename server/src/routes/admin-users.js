@@ -1,8 +1,15 @@
 const express = require("express");
 
+const {
+  EMAIL_REGEX,
+  getEmailValidationMessageForRole,
+  isEmailAllowedForRole,
+  normalizeEmail,
+} = require("../auth-policy");
 const { getFirebaseAdminServices } = require("../firebase-admin");
 
 const router = express.Router();
+const PELAPOR_ACCESS_COLLECTION = "pelapor_access";
 
 const MANAGEABLE_ROLES = new Set([
   "pelapor",
@@ -11,24 +18,38 @@ const MANAGEABLE_ROLES = new Set([
   "business-office",
 ]);
 const NAME_REGEX = /^[\p{L}\s]+$/u;
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_PELAPOR_NAME_LETTERS = 8;
 
 const getPelaporNameLetterCount = (value = "") =>
   Array.from(value).filter((character) => /\p{L}/u.test(character)).length;
 
-const normalizeEmail = (value = "") =>
-  typeof value === "string" && value.trim() ? value.trim().toLowerCase() : "";
-
 const getDefaultNameFromEmail = (email) => email.split("@")[0] || "User";
+
+const getPelaporAccessRef = (db, email) =>
+  db.collection(PELAPOR_ACCESS_COLLECTION).doc(normalizeEmail(email));
+
+const findUserProfileByEmail = async (db, email) => {
+  const normalizedEmail = normalizeEmail(email);
+  const snapshot = await db
+    .collection("users")
+    .where("email", "==", normalizedEmail)
+    .limit(1)
+    .get();
+
+  if (snapshot.empty) {
+    return null;
+  }
+
+  return snapshot.docs[0];
+};
 
 const getPasswordValidationError = (value) => {
   if (typeof value !== "string" || value.length < 8) {
-    return "Password minimal 8 karakter.";
+    return "Password role internal minimal 8 karakter.";
   }
 
   if (!/[A-Z]/.test(value) || !/[a-z]/.test(value) || !/\d/.test(value)) {
-    return "Password harus mengandung huruf besar, huruf kecil, dan angka.";
+    return "Password role internal harus mengandung huruf besar, huruf kecil, dan angka.";
   }
 
   return "";
@@ -82,7 +103,7 @@ router.post("/users", requireAdmin, async (req, res) => {
   const role = typeof req.body?.role === "string" ? req.body.role.trim() : "";
   const email = normalizeEmail(req.body?.email);
   const password =
-    typeof req.body?.password === "string" ? req.body.password : "";
+    typeof req.body?.password === "string" ? req.body.password.trim() : "";
   const requestedName =
     typeof req.body?.name === "string" ? req.body.name.trim() : "";
 
@@ -98,11 +119,9 @@ router.post("/users", requireAdmin, async (req, res) => {
     });
   }
 
-  const passwordError = getPasswordValidationError(password);
-
-  if (passwordError) {
+  if (!isEmailAllowedForRole(email, role)) {
     return res.status(400).json({
-      message: passwordError,
+      message: getEmailValidationMessageForRole(role),
     });
   }
 
@@ -124,6 +143,14 @@ router.post("/users", requireAdmin, async (req, res) => {
         message: `Nama pelapor maksimal ${MAX_PELAPOR_NAME_LETTERS} huruf.`,
       });
     }
+  } else {
+    const passwordError = getPasswordValidationError(password);
+
+    if (passwordError) {
+      return res.status(400).json({
+        message: passwordError,
+      });
+    }
   }
 
   const name =
@@ -133,6 +160,69 @@ router.post("/users", requireAdmin, async (req, res) => {
 
   try {
     const { auth, db, FieldValue } = getFirebaseAdminServices();
+    const existingProfileDoc = await findUserProfileByEmail(db, email);
+    const pelaporAccessSnapshot = await getPelaporAccessRef(db, email).get();
+
+    if (role !== "pelapor" && pelaporAccessSnapshot.exists) {
+      return res.status(409).json({
+        message: "Email sudah dipakai oleh akun pelapor Google.",
+      });
+    }
+
+    if (
+      existingProfileDoc &&
+      existingProfileDoc.data()?.role !== role &&
+      !(role === "pelapor" && existingProfileDoc.data()?.role === "pelapor")
+    ) {
+      return res.status(409).json({
+        message: "Email sudah digunakan oleh role lain.",
+      });
+    }
+
+    if (role === "pelapor") {
+      if (pelaporAccessSnapshot.exists) {
+        return res.status(409).json({
+          message: "Email pelapor sudah terdaftar untuk login Google.",
+        });
+      }
+
+      let linkedUid = "";
+
+      try {
+        const existingAuthUser = await auth.getUserByEmail(email);
+        linkedUid = existingAuthUser.uid;
+      } catch (error) {
+        if (!error || typeof error !== "object" || error.code !== "auth/user-not-found") {
+          throw error;
+        }
+      }
+
+      if (existingProfileDoc?.exists) {
+        linkedUid = existingProfileDoc.id;
+      }
+
+      await getPelaporAccessRef(db, email).set({
+        email,
+        name,
+        role,
+        authProvider: "google",
+        linkedUid: linkedUid || null,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        createdByUid: req.adminUser.uid,
+      });
+
+      return res.status(201).json({
+        message: "Pelapor berhasil ditambahkan untuk login Google.",
+        user: {
+          uid: linkedUid || email,
+          email,
+          name,
+          role,
+          authProvider: "google",
+        },
+      });
+    }
 
     try {
       await auth.getUserByEmail(email);
@@ -200,7 +290,13 @@ router.post("/users", requireAdmin, async (req, res) => {
 });
 
 router.delete("/users/:uid", requireAdmin, async (req, res) => {
-  const uid = typeof req.params?.uid === "string" ? req.params.uid.trim() : "";
+  const uid =
+    typeof req.params?.uid === "string"
+      ? decodeURIComponent(req.params.uid).trim()
+      : "";
+  const bodyRole =
+    typeof req.body?.role === "string" ? req.body.role.trim() : "";
+  const bodyEmail = normalizeEmail(req.body?.email);
 
   if (!uid) {
     return res.status(400).json({
@@ -216,6 +312,86 @@ router.delete("/users/:uid", requireAdmin, async (req, res) => {
 
   try {
     const { auth, db } = getFirebaseAdminServices();
+    const shouldDeletePelaporByEmail =
+      bodyRole === "pelapor" || EMAIL_REGEX.test(bodyEmail);
+    const emailCandidate = normalizeEmail(bodyEmail || uid);
+
+    if (shouldDeletePelaporByEmail && EMAIL_REGEX.test(emailCandidate)) {
+      const email = emailCandidate;
+      const pelaporAccessRef = getPelaporAccessRef(db, email);
+      const pelaporAccessSnapshot = await pelaporAccessRef.get();
+
+      if (!pelaporAccessSnapshot.exists) {
+        if (bodyRole === "pelapor") {
+          const profileDoc = await findUserProfileByEmail(db, email);
+          if (profileDoc?.exists && profileDoc.data()?.role === "pelapor") {
+            try {
+              await auth.deleteUser(profileDoc.id);
+            } catch (error) {
+              if (
+                !error ||
+                typeof error !== "object" ||
+                error.code !== "auth/user-not-found"
+              ) {
+                throw error;
+              }
+            }
+
+            await db.collection("users").doc(profileDoc.id).delete();
+
+            return res.status(200).json({
+              message: "Pelapor berhasil dihapus.",
+            });
+          }
+        }
+
+        return res.status(404).json({
+          message: "Pelapor Google tidak ditemukan.",
+        });
+      }
+
+      let authUser = null;
+
+      try {
+        authUser = await auth.getUserByEmail(email);
+      } catch (error) {
+        if (!error || typeof error !== "object" || error.code !== "auth/user-not-found") {
+          throw error;
+        }
+      }
+
+      const linkedUid =
+        typeof pelaporAccessSnapshot.data()?.linkedUid === "string"
+          ? pelaporAccessSnapshot.data().linkedUid.trim()
+          : "";
+      const candidateUid = authUser?.uid || linkedUid;
+      let profileSnapshot = null;
+
+      if (candidateUid) {
+        profileSnapshot = await db.collection("users").doc(candidateUid).get();
+
+        if (profileSnapshot.exists && profileSnapshot.data()?.role !== "pelapor") {
+          return res.status(409).json({
+            message: "Email ini sedang dipakai oleh role internal dan tidak bisa dihapus sebagai pelapor.",
+          });
+        }
+
+        if (profileSnapshot.exists && profileSnapshot.data()?.role === "pelapor") {
+          await db.collection("users").doc(candidateUid).delete();
+        }
+      }
+
+      if (authUser) {
+        await auth.deleteUser(authUser.uid);
+      }
+
+      await pelaporAccessRef.delete();
+
+      return res.status(200).json({
+        message: "Pelapor Google berhasil dihapus.",
+      });
+    }
+
     const profileSnapshot = await db.collection("users").doc(uid).get();
     const profileData = profileSnapshot.exists ? profileSnapshot.data() : null;
 
