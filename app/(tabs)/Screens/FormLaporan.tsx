@@ -13,7 +13,6 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -22,9 +21,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { auth, db } from "@/lib/firebase";
 import { getServerApiBaseUrl } from "@/lib/server-api";
-import { getWorkflowDefaults } from "@/app/utils/workflow";
+import { getWorkflowDefaults } from "@/lib/workflow";
 import {
   getDefaultNameFromEmail,
   getUserProfileByUid,
@@ -111,6 +111,7 @@ const parseUploadPayload = (rawBody: string) => {
 
 const FormLaporan: React.FC = () => {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [kategori, setKategori] = useState<Kategori>("IT");
   const [priority, setPriority] = useState<Priority>("medium");
   const [judul, setJudul] = useState("");
@@ -425,7 +426,7 @@ const FormLaporan: React.FC = () => {
   ];
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <Modal
         transparent
@@ -497,6 +498,7 @@ const FormLaporan: React.FC = () => {
             styles.scrollContent,
             {
               paddingHorizontal: horizontalPadding,
+              paddingTop: Math.max(insets.top + 8, 16),
               paddingBottom: 40,
             },
           ]}
@@ -734,7 +736,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: "#FFFFFF",
-    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight || 0 : 0,
   },
   keyboardView: {
     flex: 1,
@@ -850,7 +851,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingTop: Platform.OS === "android" ? 12 : 16,
   },
   header: {
     marginBottom: 20,
@@ -1057,3 +1057,6 @@ const styles = StyleSheet.create({
 });
 
 export default FormLaporan;
+
+
+

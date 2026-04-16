@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "460587960532",
+    "firebase_url": "https://ufixed-e7260-default-rtdb.firebaseio.com",
+    "project_id": "ufixed-e7260",
+    "storage_bucket": "ufixed-e7260.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:460587960532:android:3c590669a77e7731fe1341",
+        "android_client_info": {
+          "package_name": "com.unklab.company"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "460587960532-2b9h881lffhnevo29r8fbvru6om98735.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.unklab.company",
+            "certificate_hash": "662408f1304ef40d260b5fc3252060d51172c201"
+          }
+        },
+        {
+          "client_id": "460587960532-s5usuksd6totudnu0mj3r6arpalft3jn.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBOTMLF2xH1e4DsKkrfutYLPWU29PY8ASA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "460587960532-s5usuksd6totudnu0mj3r6arpalft3jn.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

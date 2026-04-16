@@ -9,23 +9,23 @@ import {
   getDefaultNameFromEmail,
   getUserProfileByUid,
 } from "@/lib/user-profile";
-import { formatPriorityLabel } from "@/app/utils/priority";
+import { formatPriorityLabel } from "@/lib/priority";
 import {
   getPelaporProgressBucket,
   normalizeWorkflowReport,
   type WorkflowStage,
   type WorkflowState,
-} from "@/app/utils/workflow";
+} from "@/lib/workflow";
 import {
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
   Alert,
+  StatusBar,
 } from "react-native";
-
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import ScreenLoader from "@/components/ui/ScreenLoader";
 
 type PelaporTab = "semua" | "proses" | "selesai";
@@ -62,6 +62,7 @@ const matchesCategoryFilter = (
 
 const DashboardPelapor: React.FC = () => {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<PelaporTab>("semua");
   const [categoryFilter, setCategoryFilter] =
     useState<PelaporCategoryFilter>("it");
@@ -202,13 +203,14 @@ const DashboardPelapor: React.FC = () => {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
+      <StatusBar barStyle="light-content" backgroundColor="#1E5BFF" />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         {/* HEADER BIRU */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: Math.max(insets.top + 8, 18) }]}>
           <View style={styles.headerTopRow}>
             <View style={styles.headerUserRow}>
               <View style={styles.avatarCircle}>
@@ -501,10 +503,10 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+    backgroundColor: "#E9F3FF",
   },
   header: {
     backgroundColor: "#1E5BFF",
-    paddingTop: 32,
     paddingHorizontal: 20,
     paddingBottom: 90,
     borderBottomLeftRadius: 32,
@@ -823,3 +825,4 @@ const styles = StyleSheet.create({
 });
 
 export default DashboardPelapor;
+

@@ -163,6 +163,11 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /pelapor_access/{accessId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
     match /notifications/{notificationId} {
       allow read: if signedIn() && resource.data.userUid == request.auth.uid;
       allow create: if signedIn() &&

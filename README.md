@@ -11,6 +11,23 @@ UFIXED adalah aplikasi React Native berbasis Expo untuk pelaporan kerusakan bara
 
 Form laporan di aplikasi sekarang menyimpan data ke koleksi `laporan` di Firestore saat tombol kirim ditekan.
 
+## Login Pelapor Dengan Google
+
+Role `pelapor` sekarang memakai Google Sign-In. Sebelum digunakan:
+
+1. Aktifkan provider `Google` di Firebase Authentication.
+2. Isi nilai berikut di root `.env`:
+   - `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID`
+   - `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`
+   - `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`
+3. Pastikan admin server tetap aktif karena backend akan menyinkronkan akses pelapor Google ke koleksi `users`.
+4. Deploy ulang `firestore.rules` karena repo ini menambahkan koleksi `pelapor_access` untuk whitelist pelapor.
+
+Aturan domain:
+
+- `pelapor` boleh memakai `@student.unklab.ac.id` atau `@unklab.ac.id`
+- role internal tetap memakai `@unklab.ac.id`
+
 ## Firestore Rules
 
 File rules ada di `firestore.rules`. Untuk deploy ke project Firebase:

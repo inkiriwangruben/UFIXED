@@ -1,10 +1,10 @@
-import { formatPriorityLabel } from "@/app/utils/priority";
+import { formatPriorityLabel } from "@/lib/priority";
 import {
   formatTimelineDate,
   getUnitLabel,
   normalizeWorkflowReport,
   type WorkflowReport,
-} from "@/app/utils/workflow";
+} from "@/lib/workflow";
 import { auth, db } from "@/lib/firebase";
 import {
   approveReportAsAdmin,
@@ -28,7 +28,6 @@ import {
   Alert,
   Modal,
   Platform,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -37,7 +36,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-
+import { SafeAreaView } from "react-native-safe-area-context";
 import BlockingLoader from "@/components/ui/BlockingLoader";
 import ScreenLoader from "@/components/ui/ScreenLoader";
 
@@ -1485,3 +1484,6 @@ const styles = StyleSheet.create({
 });
 
 export default DetailLaporan;
+
+
+

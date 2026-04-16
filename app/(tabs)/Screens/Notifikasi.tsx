@@ -7,7 +7,6 @@ import { db, auth } from "@/lib/firebase";
 import { LOGIN_ROUTE } from "@/lib/session";
 import {
   Platform,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -16,7 +15,7 @@ import {
   View,
   Alert,
 } from "react-native";
-
+import { SafeAreaView } from "react-native-safe-area-context";
 import ScreenLoader from "@/components/ui/ScreenLoader";
 
 type NotifStatus =
@@ -378,3 +377,5 @@ const styles = StyleSheet.create({
 });
 
 export default NotifikasiScreen;
+
+
