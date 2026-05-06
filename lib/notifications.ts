@@ -1,5 +1,6 @@
+import { auth, db } from "@/lib/firebase";
+import { fetchServerApi } from "@/lib/server-api";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 
 export type NotificationStatus =
   | "diverifikasi"
@@ -16,6 +17,44 @@ interface CreateNotificationInput {
   status: NotificationStatus;
 }
 
+const sendPushNotification = async ({
+  userUid,
+  reportId,
+  title,
+  description,
+}: Omit<CreateNotificationInput, "status">) => {
+  const currentUser = auth.currentUser;
+
+  if (!currentUser) {
+    return;
+  }
+
+  try {
+    const token = await currentUser.getIdToken(true);
+
+    await fetchServerApi("/notifications/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        targetUserUid: userUid,
+        reportId,
+        title,
+        body: description,
+        data: {
+          screen: "notifikasi",
+          reportId,
+        },
+      }),
+    });
+  } catch (error) {
+    console.error("Error sending Expo push notification:", error);
+  }
+};
+
 export const createNotification = async ({
   userUid,
   reportId,
@@ -31,5 +70,12 @@ export const createNotification = async ({
     status,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+  });
+
+  await sendPushNotification({
+    userUid,
+    reportId,
+    title,
+    description,
   });
 };

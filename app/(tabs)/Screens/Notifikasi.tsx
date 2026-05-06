@@ -6,16 +6,15 @@ import { onAuthStateChanged } from "firebase/auth";
 import { db, auth } from "@/lib/firebase";
 import { LOGIN_ROUTE } from "@/lib/session";
 import {
-  Platform,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
   Alert,
+  StatusBar,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import ScreenLoader from "@/components/ui/ScreenLoader";
 
 type NotifStatus =
@@ -37,6 +36,7 @@ interface NotifikasiItem {
 
 const NotifikasiScreen: React.FC = () => {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [notifications, setNotifications] = useState<NotifikasiItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [authResolved, setAuthResolved] = useState(false);
@@ -146,9 +146,9 @@ const NotifikasiScreen: React.FC = () => {
   ).length;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top + 4, 12) }]}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Feather name="arrow-left" size={28} color="#111827" />
         </TouchableOpacity>
@@ -224,13 +224,11 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: "#FFFFFF",
-    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight || 0 : 0,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 4,
     paddingBottom: 12,
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,

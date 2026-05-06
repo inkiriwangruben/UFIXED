@@ -28,6 +28,23 @@ Aturan domain:
 - `pelapor` boleh memakai `@student.unklab.ac.id` atau `@unklab.ac.id`
 - role internal tetap memakai `@unklab.ac.id`
 
+## Push Notification Penuh
+
+Project ini sekarang mendukung push notification melalui Expo Push Service.
+
+Yang perlu disiapkan:
+
+1. Install ulang atau rebuild aplikasi setelah menambahkan `expo-notifications`.
+2. Isi `EXPO_PUBLIC_EAS_PROJECT_ID` di root `.env`.
+3. Jalankan backend `server`, karena registrasi token dan pengiriman push dilakukan lewat endpoint backend.
+
+Alur kerjanya:
+
+- app mendaftarkan `ExpoPushToken` device saat user login
+- token disimpan di koleksi `push_tokens`
+- saat `createNotification(...)` dipanggil, backend mengirim push ke Expo Push Service
+- notifikasi bisa tetap muncul meskipun app sedang tertutup
+
 ## Firestore Rules
 
 File rules ada di `firestore.rules`. Untuk deploy ke project Firebase:

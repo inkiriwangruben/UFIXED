@@ -3,6 +3,7 @@ require("./load-env");
 const { cert, getApps, initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { FieldValue, getFirestore } = require("firebase-admin/firestore");
+const { getMessaging } = require("firebase-admin/messaging");
 
 const adminAppName = "ufixed-admin-server";
 
@@ -37,6 +38,7 @@ function getFirebaseAdminServices() {
     app,
     auth: getAuth(app),
     db: getFirestore(app),
+    messaging: getMessaging(app),
     FieldValue,
   };
 

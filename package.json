@@ -4,7 +4,10 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
+    "start:dev-client": "expo start --dev-client -c --host lan",
+    "start:tunnel": "expo start --dev-client -c --tunnel",
     "android": "expo run:android",
+    "build:apk-demo": "cd android && gradlew.bat assembleRelease",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint"
@@ -23,6 +26,7 @@
     "expo-image": "~3.0.11",
     "expo-image-picker": "~17.0.10",
     "expo-linking": "~8.0.11",
+    "expo-notifications": "~0.32.16",
     "expo-router": "~6.0.23",
     "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",

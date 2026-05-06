@@ -1,8 +1,10 @@
 import { formatPriorityLabel } from "@/lib/priority";
 import {
+  type DuplicateSource,
   formatTimelineDate,
   getUnitLabel,
   normalizeWorkflowReport,
+  type Priority,
   type WorkflowReport,
 } from "@/lib/workflow";
 import { auth, db } from "@/lib/firebase";
@@ -36,7 +38,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import BlockingLoader from "@/components/ui/BlockingLoader";
 import ScreenLoader from "@/components/ui/ScreenLoader";
 
@@ -55,6 +57,10 @@ interface TimelineItem {
 const formatRupiah = (value: number) => `Rp ${value.toLocaleString("id-ID")}`;
 
 const getPriorityPalette = (priority: string) => {
+  if (!priority) {
+    return { bg: "#F8FAFC", border: "#CBD5E1", text: "#64748B" };
+  }
+
   switch (priority.toLowerCase()) {
     case "critical":
       return { bg: "#FEF2F2", border: "#FCA5A5", text: "#B91C1C" };
@@ -66,6 +72,51 @@ const getPriorityPalette = (priority: string) => {
       return { bg: "#F0FDF4", border: "#86EFAC", text: "#15803D" };
   }
 };
+
+const getDuplicateInfoText = (
+  duplicateSource?: DuplicateSource,
+  duplicateOfReportId?: string,
+) => {
+  let message = "Laporan ini terdeteksi duplikat dari laporan aktif lain.";
+
+  if (duplicateSource === "title") {
+    message = "Laporan ini terdeteksi memiliki judul yang sama dengan laporan aktif lain.";
+  } else if (duplicateSource === "location") {
+    message = "Laporan ini terdeteksi memiliki lokasi yang sama dengan laporan aktif lain.";
+  } else if (duplicateSource === "title+location") {
+    message =
+      "Laporan ini terdeteksi memiliki judul dan lokasi yang sama dengan laporan aktif lain.";
+  } else if (duplicateSource === "title+image") {
+    message =
+      "Laporan ini terdeteksi memiliki judul dan foto yang sama dengan laporan aktif lain.";
+  } else if (duplicateSource === "location+image") {
+    message =
+      "Laporan ini terdeteksi memiliki lokasi dan foto yang sama dengan laporan aktif lain.";
+  } else if (duplicateSource === "title+location+image") {
+    message =
+      "Laporan ini terdeteksi memiliki judul, lokasi, dan foto yang sama dengan laporan aktif lain.";
+  } else if (duplicateSource === "text") {
+    message = "Laporan ini terdeteksi memiliki teks yang sama dengan laporan aktif lain.";
+  } else if (duplicateSource === "image") {
+    message = "Laporan ini terdeteksi memiliki foto yang sama dengan laporan aktif lain.";
+  } else if (duplicateSource === "text+image") {
+    message =
+      "Laporan ini terdeteksi memiliki teks dan foto yang sama dengan laporan aktif lain.";
+  }
+
+  if (duplicateOfReportId) {
+    message = `${message} Referensi laporan: ${duplicateOfReportId}.`;
+  }
+
+  return message;
+};
+
+const ADMIN_PRIORITY_OPTIONS: { label: string; value: Priority }[] = [
+  { label: "Rendah", value: "low" },
+  { label: "Sedang", value: "medium" },
+  { label: "Tinggi", value: "high" },
+  { label: "Kritis", value: "critical" },
+];
 
 const getToneStyle = (tone: TimelineTone) => {
   switch (tone) {
@@ -188,6 +239,7 @@ const buildTimeline = (
 
 const DetailLaporan: React.FC = () => {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   const [report, setReport] = useState<WorkflowReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -197,6 +249,9 @@ const DetailLaporan: React.FC = () => {
   const [updating, setUpdating] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [adminSelectedPriority, setAdminSelectedPriority] = useState<Priority | null>(
+    null,
+  );
   const [showUnitApproveModal, setShowUnitApproveModal] = useState(false);
   const [unitApproveCost, setUnitApproveCost] = useState("");
   const [unitApproveEstimate, setUnitApproveEstimate] = useState("");
@@ -423,6 +478,7 @@ const DetailLaporan: React.FC = () => {
     if (!showWorkflowPanel) {
       setShowRejectModal(false);
       setRejectReason("");
+      setAdminSelectedPriority(null);
       setShowUnitApproveModal(false);
       setUnitApproveCost("");
       setUnitApproveEstimate("");
@@ -430,6 +486,10 @@ const DetailLaporan: React.FC = () => {
       setUnitApproveNote("");
     }
   }, [showWorkflowPanel]);
+
+  useEffect(() => {
+    setAdminSelectedPriority(null);
+  }, [report?.id, workflowSource]);
 
   const notifyCtx = useMemo(
     () =>
@@ -459,7 +519,14 @@ const DetailLaporan: React.FC = () => {
     try {
       setUpdating(true);
       if (workflowSource === "admin") {
-        await approveReportAsAdmin(report.id, notifyCtx);
+        if (!adminSelectedPriority) {
+          Alert.alert(
+            "Tingkat urgensi wajib dipilih",
+            "Pilih tingkat urgensi laporan sebelum menerima laporan.",
+          );
+          return;
+        }
+        await approveReportAsAdmin(report.id, notifyCtx, adminSelectedPriority);
       } else if (workflowSource === "unit") {
         // For unit approvals, open a simple mobile form before sending to BO.
         setShowUnitApproveModal(true);
@@ -477,7 +544,7 @@ const DetailLaporan: React.FC = () => {
     } finally {
       setUpdating(false);
     }
-  }, [report, workflowSource, notifyCtx]);
+  }, [report, workflowSource, notifyCtx, adminSelectedPriority]);
 
   const handleCloseUnitApproveModal = useCallback(() => {
     setShowUnitApproveModal(false);
@@ -567,6 +634,8 @@ const DetailLaporan: React.FC = () => {
   }, [report, workflowSource, rejectReason, notifyCtx, handleCloseRejectModal]);
 
   const isRejectDisabled = !rejectReason.trim();
+  const showAdminPriorityPicker = showWorkflowPanel && workflowSource === "admin";
+  const isAdminAcceptDisabled = showAdminPriorityPicker && !adminSelectedPriority;
   const isUnitApproveDisabled =
     !unitApproveNote.trim() ||
     !unitApproveEstimate.trim() ||
@@ -595,7 +664,10 @@ const DetailLaporan: React.FC = () => {
 
   if (!report) {
     return (
-      <SafeAreaView style={[styles.safeArea, styles.centerContent]}>
+      <SafeAreaView
+        edges={["left", "right", "bottom"]}
+        style={[styles.safeArea, styles.centerContent]}
+      >
         <Text style={styles.loadingText}>
           {loadErrorMessage || "Laporan tidak ditemukan."}
         </Text>
@@ -615,7 +687,7 @@ const DetailLaporan: React.FC = () => {
   const displayAuthorName = resolvedAuthorName || report.author;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FCFCFE" />
       <Modal
         visible={Boolean(selectedPhotoUrl)}
@@ -625,7 +697,10 @@ const DetailLaporan: React.FC = () => {
       >
         <View style={styles.photoModalOverlay}>
           <TouchableOpacity
-            style={styles.photoModalClose}
+            style={[
+              styles.photoModalClose,
+              { top: Math.max(insets.top + 12, Platform.OS === "android" ? 24 : 54) },
+            ]}
             onPress={() => setSelectedPhotoUrl(null)}
           >
             <Feather name="x" size={22} color="#FFFFFF" />
@@ -639,7 +714,7 @@ const DetailLaporan: React.FC = () => {
           ) : null}
         </View>
       </Modal>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top + 8, 16) }]}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Feather name="arrow-left" size={24} color="#111827" />
         </TouchableOpacity>
@@ -714,6 +789,21 @@ const DetailLaporan: React.FC = () => {
               <Text style={styles.metaText}>Dibuat {infoDate}</Text>
             </View>
           </View>
+
+          {workflowSource === "admin" && report.isDuplicate ? (
+            <View style={styles.duplicateInfoBox}>
+              <View style={styles.duplicateInfoHeader}>
+                <Feather name="copy" size={15} color="#B45309" />
+                <Text style={styles.duplicateInfoTitle}>Laporan Duplikat</Text>
+              </View>
+              <Text style={styles.duplicateInfoText}>
+                {getDuplicateInfoText(
+                  report.duplicateSource,
+                  report.duplicateOfReportId,
+                )}
+              </Text>
+            </View>
+          ) : null}
 
           {report.rejectionReason ? (
             <View style={styles.rejectBox}>
@@ -830,14 +920,66 @@ const DetailLaporan: React.FC = () => {
 
         {showWorkflowPanel ? (
           <View style={styles.card}>
+            {showAdminPriorityPicker ? (
+              <View style={styles.adminPrioritySection}>
+                <Text style={styles.adminPriorityTitle}>Tingkat Urgensi</Text>
+                <Text style={styles.adminPriorityHint}>
+                  Pilih urgensi sebelum laporan diterima admin.
+                </Text>
+                <View style={styles.adminPriorityRow}>
+                  {ADMIN_PRIORITY_OPTIONS.map((option) => {
+                    const palette = getPriorityPalette(option.value);
+                    const selected = adminSelectedPriority === option.value;
+
+                    return (
+                      <TouchableOpacity
+                        key={option.value}
+                        style={[
+                          styles.adminPriorityChip,
+                          {
+                            borderColor: selected ? palette.border : "#E5E7EB",
+                            backgroundColor: selected ? palette.bg : "#F8FAFC",
+                          },
+                        ]}
+                        activeOpacity={0.9}
+                        onPress={() => setAdminSelectedPriority(option.value)}
+                        disabled={updating}
+                      >
+                        <View
+                          style={[
+                            styles.adminPriorityDot,
+                            { backgroundColor: palette.text },
+                          ]}
+                        />
+                        <Text
+                          style={[
+                            styles.adminPriorityText,
+                            selected && { color: palette.text },
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
+
             <View style={styles.actionRow}>
               <TouchableOpacity
-                style={styles.actionButtonVerify}
-                activeOpacity={0.9}
+                style={[
+                  styles.actionButtonVerify,
+                  isAdminAcceptDisabled && styles.actionButtonDisabled,
+                ]}
+                activeOpacity={isAdminAcceptDisabled || updating ? 1 : 0.9}
                 onPress={() => {
+                  if (isAdminAcceptDisabled || updating) {
+                    return;
+                  }
                   void handleAcceptWorkflow();
                 }}
-                disabled={updating}
+                disabled={updating || isAdminAcceptDisabled}
               >
                 <Feather name="check-circle" size={14} color="#FFFFFF" />
                 <Text style={styles.actionButtonText}>Terima</Text>
@@ -1040,7 +1182,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: "#F8FAFC",
-    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight || 0 : 0,
   },
   centerContent: {
     alignItems: "center",
@@ -1056,7 +1197,6 @@ const styles = StyleSheet.create({
   },
   photoModalClose: {
     position: "absolute",
-    top: Platform.OS === "android" ? (StatusBar.currentHeight || 0) + 16 : 54,
     right: 20,
     width: 40,
     height: 40,
@@ -1094,7 +1234,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 18,
-    paddingTop: 10,
     paddingBottom: 12,
     backgroundColor: "#FAFAFA",
   },
@@ -1207,6 +1346,30 @@ const styles = StyleSheet.create({
   metaText: {
     fontSize: 13,
     color: "#6B7280",
+  },
+  duplicateInfoBox: {
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: "#FEF3C7",
+    borderWidth: 1,
+    borderColor: "#F59E0B",
+  },
+  duplicateInfoHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 5,
+  },
+  duplicateInfoTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#B45309",
+  },
+  duplicateInfoText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: "#92400E",
   },
   rejectBox: {
     marginTop: 14,
@@ -1323,6 +1486,44 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     marginBottom: 12,
   },
+  adminPrioritySection: {
+    marginBottom: 14,
+  },
+  adminPriorityTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  adminPriorityHint: {
+    marginTop: 3,
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  adminPriorityRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 10,
+  },
+  adminPriorityChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  adminPriorityDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  adminPriorityText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#475569",
+  },
   actionRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1338,6 +1539,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexDirection: "row",
     gap: 6,
+  },
+  actionButtonDisabled: {
+    backgroundColor: "#9CA3AF",
   },
   actionButtonReject: {
     flex: 1,

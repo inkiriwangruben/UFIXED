@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const express = require("express");
 const multer = require("multer");
 const {
@@ -54,6 +55,18 @@ const getBufferFromBase64 = (value) => {
   return Buffer.from(sanitized, "base64");
 };
 
+const buildPhotoFingerprint = (buffer) =>
+  crypto.createHash("sha256").update(buffer).digest("hex");
+
+const buildUploadedPhotoPayload = (result, buffer) => ({
+  url: result.url,
+  fileId: result.fileId,
+  filePath: result.filePath,
+  name: result.name,
+  thumbnailUrl: result.thumbnailUrl,
+  fingerprint: buildPhotoFingerprint(buffer),
+});
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: maxFileSize },
@@ -94,21 +107,16 @@ router.post("/report-image", upload.single("photo"), async (req, res) => {
           ? req.body.name.trim().replace(/\s+/g, "-")
           : `laporan-${Date.now()}.${extension}`;
 
+      const buffer = getBufferFromBase64(req.body.base64);
       const result = await uploadBufferToSupabaseStorage({
-        buffer: getBufferFromBase64(req.body.base64),
+        buffer,
         fileName: safeName,
         mimeType: providedType,
       });
 
       return res.status(200).json({
         message: "Upload berhasil.",
-        photo: {
-          url: result.url,
-          fileId: result.fileId,
-          filePath: result.filePath,
-          name: result.name,
-          thumbnailUrl: result.thumbnailUrl,
-        },
+        photo: buildUploadedPhotoPayload(result, buffer),
       });
     }
 
@@ -129,13 +137,7 @@ router.post("/report-image", upload.single("photo"), async (req, res) => {
 
     return res.status(200).json({
       message: "Upload berhasil.",
-      photo: {
-        url: result.url,
-        fileId: result.fileId,
-        filePath: result.filePath,
-        name: result.name,
-        thumbnailUrl: result.thumbnailUrl,
-      },
+      photo: buildUploadedPhotoPayload(result, req.file.buffer),
     });
   } catch (error) {
     const detail = getReadableUploadError(error);

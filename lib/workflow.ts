@@ -1,5 +1,16 @@
 export type Kategori = "IT" | "Non-IT";
 export type Priority = "low" | "medium" | "high" | "critical";
+export type ReportPriority = Priority | "";
+export type DuplicateSource =
+  | "text"
+  | "image"
+  | "text+image"
+  | "title"
+  | "location"
+  | "title+location"
+  | "title+image"
+  | "location+image"
+  | "title+location+image";
 export type UnitTarget = "department-it" | "tukang";
 export type WorkflowStage =
   | "admin_review"
@@ -23,6 +34,7 @@ export interface ReportPhoto {
   filePath?: string;
   name?: string;
   thumbnailUrl?: string;
+  fingerprint?: string;
 }
 
 export interface WorkflowReport {
@@ -30,7 +42,7 @@ export interface WorkflowReport {
   title: string;
   description: string;
   kategori: Kategori;
-  priority: Priority;
+  priority: ReportPriority;
   icon: "monitor" | "tools";
   author: string;
   authorUid?: string;
@@ -39,6 +51,13 @@ export interface WorkflowReport {
   workflowStage: WorkflowStage;
   workflowState: WorkflowState;
   unitTarget: UnitTarget;
+  duplicateKey?: string;
+  duplicateTitleKey?: string;
+  duplicateLocationKey?: string;
+  isDuplicate: boolean;
+  duplicateOfReportId?: string;
+  duplicateSource?: DuplicateSource;
+  photoFingerprints?: string[];
   rejectionReason?: string;
   rejectedByRole?: string;
   photos: ReportPhoto[];
@@ -49,6 +68,7 @@ export interface WorkflowReport {
   repairStartedAtValue?: number | null;
   completedAtValue?: number | null;
   updatedAtValue?: number | null;
+  duplicateCheckedAtValue?: number | null;
 }
 
 export const getUnitTargetFromKategori = (kategori: Kategori): UnitTarget =>
@@ -164,13 +184,29 @@ export const normalizeWorkflowReport = (
   const repairStartedAt = getDateFromTimestamp(data.repairStartedAt);
   const completedAt = getDateFromTimestamp(data.completedAt);
   const updatedAt = getDateFromTimestamp(data.updatedAt);
+  const duplicateCheckedAt = getDateFromTimestamp(data.duplicateCheckedAt);
+  const duplicateSource =
+    typeof data.duplicateSource === "string" &&
+    [
+      "text",
+      "image",
+      "text+image",
+      "title",
+      "location",
+      "title+location",
+      "title+image",
+      "location+image",
+      "title+location+image",
+    ].includes(data.duplicateSource)
+      ? (data.duplicateSource as DuplicateSource)
+      : undefined;
 
   return {
     id,
     title: data.judul || data.title || "",
     description: data.deskripsi || data.description || "",
     kategori,
-    priority: (data.priority as Priority) || "medium",
+    priority: (data.priority as Priority) || "",
     icon: kategori === "IT" ? "monitor" : "tools",
     author:
       data.authorName || data.author || data.authorEmail || data.email || "Unknown",
@@ -180,10 +216,48 @@ export const normalizeWorkflowReport = (
     workflowStage,
     workflowState,
     unitTarget,
+    duplicateKey:
+      typeof data.duplicateKey === "string" ? data.duplicateKey : undefined,
+    duplicateTitleKey:
+      typeof data.duplicateTitleKey === "string"
+        ? data.duplicateTitleKey
+        : undefined,
+    duplicateLocationKey:
+      typeof data.duplicateLocationKey === "string"
+        ? data.duplicateLocationKey
+        : undefined,
+    isDuplicate: data.isDuplicate === true,
+    duplicateOfReportId:
+      typeof data.duplicateOfReportId === "string"
+        ? data.duplicateOfReportId
+        : undefined,
+    duplicateSource,
     rejectionReason: data.rejectionReason,
     rejectedByRole: data.rejectedByRole,
     photos: Array.isArray(data.photos)
-      ? data.photos.filter((photo: ReportPhoto | null | undefined) => photo?.url)
+      ? data.photos
+          .filter((photo: ReportPhoto | null | undefined) => photo?.url)
+          .map((photo) => ({
+            url: photo!.url,
+            fileId: typeof photo?.fileId === "string" ? photo.fileId : undefined,
+            filePath:
+              typeof photo?.filePath === "string" ? photo.filePath : undefined,
+            name: typeof photo?.name === "string" ? photo.name : undefined,
+            thumbnailUrl:
+              typeof photo?.thumbnailUrl === "string"
+                ? photo.thumbnailUrl
+                : undefined,
+            fingerprint:
+              typeof photo?.fingerprint === "string"
+                ? photo.fingerprint
+                : undefined,
+          }))
+      : [],
+    photoFingerprints: Array.isArray(data.photoFingerprints)
+      ? data.photoFingerprints.filter(
+          (fingerprint: string | null | undefined): fingerprint is string =>
+            typeof fingerprint === "string" && fingerprint.trim().length > 0,
+        )
       : [],
     createdAtValue: createdAt?.getTime() ?? null,
     approvedByAdminAtValue: approvedByAdminAt?.getTime() ?? null,
@@ -193,6 +267,7 @@ export const normalizeWorkflowReport = (
     repairStartedAtValue: repairStartedAt?.getTime() ?? null,
     completedAtValue: completedAt?.getTime() ?? null,
     updatedAtValue: updatedAt?.getTime() ?? null,
+    duplicateCheckedAtValue: duplicateCheckedAt?.getTime() ?? null,
   };
 };
 

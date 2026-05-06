@@ -91,7 +91,7 @@ const DashboardTukang: React.FC = () => {
                   title: data.title,
                   description: data.description,
                   tabStatus: data.workflowStage === "done" ? "selesai" : "proses",
-                  priority: data.priority || "medium",
+                  priority: data.priority || "",
                   icon: "tools",
                   date: data.date,
                   author: await resolveReportAuthorName({
@@ -357,131 +357,147 @@ const DashboardTukang: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          {filteredLaporan.map((item, index) => (
-            <TouchableOpacity
-              key={item.id}
-              style={[styles.reportCard, index > 0 && styles.reportCardSpacing]}
-              activeOpacity={0.9}
-              onPress={() =>
-                router.push({
-                  pathname: "/(tabs)/Screens/DetailLaporan",
-                  params: {
-                    id: item.id,
-                    workflowSource: "unit",
-                    returnPath: "/(tabs)/Screens/DashboardTukang",
-                  },
-                })
-              }
-            >
-              <View style={styles.reportHeaderRow}>
-                <View style={styles.reportTitleRow}>
-                  <View style={styles.reportIconCircle}>
-                    <Feather name="tool" size={16} color="#F97316" />
-                  </View>
-                  <Text style={styles.reportTitle} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                </View>
-                <Feather name="chevron-right" size={18} color="#9CA3AF" />
-              </View>
-
-              <Text style={styles.reportDescription} numberOfLines={3}>
-                {item.description}
+          {filteredLaporan.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Feather name="file-text" size={28} color="#9CA3AF" />
+              <Text style={styles.emptyTitle}>Belum ada laporan</Text>
+              <Text style={styles.emptySubtitle}>
+                Tidak ada laporan yang cocok dengan tab yang dipilih.
               </Text>
-
-              <View style={styles.reportMetaRow}>
-                <View style={styles.reportMetaGroup}>
-                  <View style={[styles.reportMetaItem, styles.reportMetaItemAuthor]}>
-                    <Feather name="user" size={12} color="#6B7280" />
-                    <Text style={styles.reportMetaText} numberOfLines={1}>
-                      {item.author}
+            </View>
+          ) : (
+            filteredLaporan.map((item, index) => (
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.reportCard, index > 0 && styles.reportCardSpacing]}
+                activeOpacity={0.9}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(tabs)/Screens/DetailLaporan",
+                    params: {
+                      id: item.id,
+                      workflowSource: "unit",
+                      returnPath: "/(tabs)/Screens/DashboardTukang",
+                    },
+                  })
+                }
+              >
+                <View style={styles.reportHeaderRow}>
+                  <View style={styles.reportTitleRow}>
+                    <View style={styles.reportIconCircle}>
+                      <Feather name="tool" size={16} color="#F97316" />
+                    </View>
+                    <Text style={styles.reportTitle} numberOfLines={1}>
+                      {item.title}
                     </Text>
                   </View>
-
-                  <View style={[styles.reportMetaItem, styles.reportMetaItemDate]}>
-                    <Feather name="calendar" size={12} color="#6B7280" />
-                    <Text style={styles.reportMetaText}>{item.date}</Text>
-                  </View>
+                  <Feather name="chevron-right" size={18} color="#9CA3AF" />
                 </View>
 
-                <View
-                  style={[
-                    styles.priorityBadge,
-                    {
-                      backgroundColor:
-                        item.priority === "critical"
-                          ? "#FEF2F2"
-                          : item.priority === "high"
-                            ? "#FFF7ED"
-                            : item.priority === "medium"
-                              ? "#EFF6FF"
-                              : "#F0FDF4",
-                      borderColor:
-                        item.priority === "critical"
-                          ? "#EF4444"
-                          : item.priority === "high"
-                            ? "#F97316"
-                            : item.priority === "medium"
-                              ? "#3B82F6"
-                              : "#22C55E",
-                    },
-                  ]}
-                >
-                  <Text
+                <Text style={styles.reportDescription} numberOfLines={3}>
+                  {item.description}
+                </Text>
+
+                <View style={styles.reportMetaRow}>
+                  <View style={styles.reportMetaGroup}>
+                    <View style={[styles.reportMetaItem, styles.reportMetaItemAuthor]}>
+                      <Feather name="user" size={12} color="#6B7280" />
+                      <Text style={styles.reportMetaText} numberOfLines={1}>
+                        {item.author}
+                      </Text>
+                    </View>
+
+                    <View style={[styles.reportMetaItem, styles.reportMetaItemDate]}>
+                      <Feather name="calendar" size={12} color="#6B7280" />
+                      <Text style={styles.reportMetaText}>{item.date}</Text>
+                    </View>
+                  </View>
+
+                  <View
                     style={[
-                      styles.priorityBadgeText,
+                      styles.priorityBadge,
                       {
-                        color:
+                        backgroundColor:
                           item.priority === "critical"
-                            ? "#B91C1C"
+                            ? "#FEF2F2"
                             : item.priority === "high"
-                              ? "#C2410C"
+                              ? "#FFF7ED"
                               : item.priority === "medium"
-                                ? "#1D4ED8"
-                                : "#15803D",
+                                ? "#EFF6FF"
+                                : item.priority === "low"
+                                  ? "#F0FDF4"
+                                  : "#F8FAFC",
+                        borderColor:
+                          item.priority === "critical"
+                            ? "#EF4444"
+                            : item.priority === "high"
+                              ? "#F97316"
+                              : item.priority === "medium"
+                                ? "#3B82F6"
+                                : item.priority === "low"
+                                  ? "#22C55E"
+                                  : "#CBD5E1",
                       },
                     ]}
                   >
-                    {formatPriorityLabel(item.priority)}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.priorityBadgeText,
+                        {
+                          color:
+                            item.priority === "critical"
+                              ? "#B91C1C"
+                              : item.priority === "high"
+                              ? "#C2410C"
+                              : item.priority === "medium"
+                                ? "#1D4ED8"
+                                : item.priority === "low"
+                                  ? "#15803D"
+                                  : "#64748B",
+                        },
+                      ]}
+                    >
+                      {formatPriorityLabel(item.priority)}
+                    </Text>
+                  </View>
                 </View>
-              </View>
 
-              {activeTab === "proses" &&
-                item.tabStatus === "proses" &&
-                item.workflowStage === "unit_repair" &&
-                item.workflowState === "bo_approved" && (
-                <View style={styles.singleActionRow}>
-                  <TouchableOpacity
-                    style={styles.actionButtonRepair}
-                    activeOpacity={0.9}
-                    onPress={() => handleStartRepair(item.id)}
-                    disabled={updating}
-                  >
-                    <Feather name="tool" size={14} color="#FFFFFF" />
-                    <Text style={styles.actionButtonText}>Mulai Perbaikan</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+                {activeTab === "proses" &&
+                  item.tabStatus === "proses" &&
+                  item.workflowStage === "unit_repair" &&
+                  item.workflowState === "bo_approved" && (
+                  <View style={styles.singleActionRow}>
+                    <TouchableOpacity
+                      style={styles.actionButtonRepair}
+                      activeOpacity={0.9}
+                      onPress={() => handleStartRepair(item.id)}
+                      disabled={updating}
+                    >
+                      <Feather name="tool" size={14} color="#FFFFFF" />
+                      <Text style={styles.actionButtonText}>Mulai Perbaikan</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
-              {activeTab === "proses" &&
-                item.tabStatus === "proses" &&
-                item.workflowStage === "unit_repair" &&
-                item.workflowState === "repairing" && (
-                <View style={styles.singleActionRow}>
-                  <TouchableOpacity
-                    style={styles.actionButtonComplete}
-                    activeOpacity={0.9}
-                    onPress={() => handleFinishRepair(item.id)}
-                    disabled={updating}
-                  >
-                    <Feather name="check-circle" size={14} color="#FFFFFF" />
-                    <Text style={styles.actionButtonText}>Selesai</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </TouchableOpacity>
-          ))}
+                {activeTab === "proses" &&
+                  item.tabStatus === "proses" &&
+                  item.workflowStage === "unit_repair" &&
+                  item.workflowState === "repairing" && (
+                  <View style={styles.singleActionRow}>
+                    <TouchableOpacity
+                      style={styles.actionButtonComplete}
+                      activeOpacity={0.9}
+                      onPress={() => handleFinishRepair(item.id)}
+                      disabled={updating}
+                    >
+                      <Feather name="check-circle" size={14} color="#FFFFFF" />
+                      <Text style={styles.actionButtonText}>Selesai</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))
+          )}
 
           <View style={styles.bottomSpacer} />
         </View>
@@ -627,6 +643,32 @@ const styles = StyleSheet.create({
   reportCardSpacing: {
     marginTop: 12,
   },
+  emptyCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  emptyTitle: {
+    marginTop: 12,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  emptySubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 20,
+    color: "#6B7280",
+    textAlign: "center",
+  },
   reportHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -743,4 +785,3 @@ const styles = StyleSheet.create({
 });
 
 export default DashboardTukang;
-
