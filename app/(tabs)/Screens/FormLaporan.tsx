@@ -23,8 +23,16 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { auth, db } from "@/lib/firebase";
-import { getServerApiBaseUrl } from "@/lib/server-api";
-import { getWorkflowDefaults } from "@/lib/workflow";
+import {
+  fetchServerApi,
+  getServerApiBaseUrl,
+} from "@/lib/server-api";
+import { buildReportDuplicateSignals } from "@/lib/report-duplicates";
+import {
+  getWorkflowDefaults,
+  type DuplicateSource,
+  type ReportPhoto,
+} from "@/lib/workflow";
 import {
   getDefaultNameFromEmail,
   getUserProfileByUid,
@@ -34,7 +42,6 @@ import BlockingLoader from "@/components/ui/BlockingLoader";
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 type Kategori = "IT" | "Non-IT";
-type Priority = "low" | "medium" | "high" | "critical";
 type LocalPhoto = {
   uri: string;
   name: string;
@@ -86,6 +93,30 @@ type UploadResponseError = Error & {
   isUploadResponseError: true;
 };
 
+type DuplicateCheckResult = {
+  duplicateKey: string;
+  duplicateTitleKey: string;
+  duplicateLocationKey?: string | null;
+  isDuplicate: boolean;
+  duplicateOfReportId?: string | null;
+  duplicateSource?: DuplicateSource | null;
+  matchedSignals: ("title" | "location" | "image")[];
+  titleSimilarity: number;
+  duplicateMatchCount: number;
+};
+
+const VALID_DUPLICATE_SOURCES = new Set<DuplicateSource>([
+  "text",
+  "image",
+  "text+image",
+  "title",
+  "location",
+  "title+location",
+  "title+image",
+  "location+image",
+  "title+location+image",
+]);
+
 const createUploadResponseError = (message: string): UploadResponseError => {
   const error = new Error(message) as UploadResponseError;
   error.isUploadResponseError = true;
@@ -109,11 +140,100 @@ const parseUploadPayload = (rawBody: string) => {
   }
 };
 
+const checkDuplicateReport = async ({
+  kategori,
+  judul,
+  deskripsi,
+  photoFingerprints,
+}: {
+  kategori: Kategori;
+  judul: string;
+  deskripsi: string;
+  photoFingerprints: string[];
+}): Promise<DuplicateCheckResult> => {
+  const currentAuthUser = auth.currentUser;
+
+  if (!currentAuthUser) {
+    throw new Error("Silakan login terlebih dahulu untuk mengecek duplikasi.");
+  }
+
+  const fallbackDuplicateSignals = buildReportDuplicateSignals({
+    kategori,
+    judul,
+    deskripsi,
+  });
+  const token = await currentAuthUser.getIdToken(true);
+  const response = await fetchServerApi("/reports/check-duplicate", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      kategori,
+      judul,
+      deskripsi,
+      photoFingerprints,
+    }),
+  });
+  const rawBody = await response.text();
+  const payload = parseUploadPayload(rawBody);
+
+  if (!response.ok) {
+    throw new Error(
+      getUploadErrorMessage(payload, "Gagal mengecek duplikasi laporan."),
+    );
+  }
+
+  return {
+    duplicateKey:
+      typeof payload?.duplicateKey === "string" && payload.duplicateKey.trim()
+        ? payload.duplicateKey.trim()
+        : fallbackDuplicateSignals.duplicateKey,
+    duplicateTitleKey:
+      typeof payload?.duplicateTitleKey === "string" &&
+      payload.duplicateTitleKey.trim()
+        ? payload.duplicateTitleKey.trim()
+        : fallbackDuplicateSignals.titleKey,
+    duplicateLocationKey:
+      typeof payload?.duplicateLocationKey === "string" &&
+      payload.duplicateLocationKey.trim()
+        ? payload.duplicateLocationKey.trim()
+        : fallbackDuplicateSignals.locationKey || null,
+    isDuplicate: payload?.isDuplicate === true,
+    duplicateOfReportId:
+      typeof payload?.duplicateOfReportId === "string"
+        ? payload.duplicateOfReportId
+        : null,
+    duplicateSource:
+      typeof payload?.duplicateSource === "string" &&
+      VALID_DUPLICATE_SOURCES.has(payload.duplicateSource as DuplicateSource)
+        ? (payload.duplicateSource as DuplicateSource)
+        : null,
+    matchedSignals: Array.isArray(payload?.matchedSignals)
+      ? payload.matchedSignals.filter(
+          (signal: unknown): signal is "title" | "location" | "image" =>
+            signal === "title" || signal === "location" || signal === "image",
+        )
+      : [],
+    titleSimilarity:
+      typeof payload?.titleSimilarity === "number" &&
+      Number.isFinite(payload.titleSimilarity)
+        ? payload.titleSimilarity
+        : 0,
+    duplicateMatchCount:
+      typeof payload?.duplicateMatchCount === "number" &&
+      Number.isFinite(payload.duplicateMatchCount)
+        ? payload.duplicateMatchCount
+        : 0,
+  };
+};
+
 const FormLaporan: React.FC = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [kategori, setKategori] = useState<Kategori>("IT");
-  const [priority, setPriority] = useState<Priority>("medium");
   const [judul, setJudul] = useState("");
   const [deskripsi, setDeskripsi] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -263,17 +383,35 @@ const FormLaporan: React.FC = () => {
     setPhotoPickerVisible(true);
   };
 
-  const uploadSinglePhoto = async (photo: LocalPhoto) => {
+  const uploadSinglePhoto = async (photo: LocalPhoto): Promise<ReportPhoto> => {
     const parseUploadedPhoto = (
       payload: Record<string, any> | null,
-    ) => {
+    ): ReportPhoto => {
       if (!payload?.photo?.url) {
         throw createUploadResponseError(
           "Upload foto tidak mengembalikan URL yang valid.",
         );
       }
 
-      return payload.photo;
+      return {
+        url: payload.photo.url,
+        fileId:
+          typeof payload.photo.fileId === "string" ? payload.photo.fileId : undefined,
+        filePath:
+          typeof payload.photo.filePath === "string"
+            ? payload.photo.filePath
+            : undefined,
+        name: typeof payload.photo.name === "string" ? payload.photo.name : undefined,
+        thumbnailUrl:
+          typeof payload.photo.thumbnailUrl === "string"
+            ? payload.photo.thumbnailUrl
+            : undefined,
+        fingerprint:
+          typeof payload.photo.fingerprint === "string" &&
+          payload.photo.fingerprint.trim()
+            ? payload.photo.fingerprint.trim()
+            : undefined,
+      };
     };
 
     try {
@@ -332,9 +470,34 @@ const FormLaporan: React.FC = () => {
     }
   };
 
+  const deleteUploadedPhoto = async (fileId: string) => {
+    try {
+      const response = await fetchServerApi(
+        `/uploads/report-image/${encodeURIComponent(fileId)}`,
+        {
+          method: "DELETE",
+          headers: {
+            Accept: "application/json",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        console.error(
+          "Failed to clean up uploaded photo:",
+          fileId,
+          await response.text(),
+        );
+      }
+    } catch (error) {
+      console.error("Failed to clean up uploaded photo:", fileId, error);
+    }
+  };
+
   const handleKirim = async () => {
     const trimmedJudul = judul.trim();
     const trimmedDeskripsi = deskripsi.trim();
+    const uploadedPhotos: ReportPhoto[] = [];
 
     if (!currentUser) {
       Alert.alert(
@@ -364,11 +527,48 @@ const FormLaporan: React.FC = () => {
       setIsSubmitting(true);
 
       const workflowDefaults = getWorkflowDefaults(kategori);
-      const uploadedPhotos = await Promise.all(photos.map(uploadSinglePhoto));
+
+      for (const photo of photos) {
+        uploadedPhotos.push(await uploadSinglePhoto(photo));
+      }
+
+      const photoFingerprints = uploadedPhotos
+        .map((photo) =>
+          typeof photo.fingerprint === "string" ? photo.fingerprint.trim() : "",
+        )
+        .filter(Boolean);
+      const duplicateSignals = buildReportDuplicateSignals({
+        kategori,
+        judul: trimmedJudul,
+        deskripsi: trimmedDeskripsi,
+      });
+
+      const duplicateCheck = await checkDuplicateReport({
+        kategori,
+        judul: trimmedJudul,
+        deskripsi: trimmedDeskripsi,
+        photoFingerprints,
+      });
+      const duplicateSource =
+        duplicateCheck.duplicateSource ??
+        (duplicateCheck.isDuplicate ? "title" : null);
+
+      if (__DEV__) {
+        console.log("UFIXED duplicate check:", {
+          duplicateKey: duplicateCheck.duplicateKey,
+          duplicateTitleKey: duplicateCheck.duplicateTitleKey,
+          duplicateLocationKey: duplicateCheck.duplicateLocationKey,
+          photoFingerprintCount: photoFingerprints.length,
+          isDuplicate: duplicateCheck.isDuplicate,
+          duplicateSource,
+          matchedSignals: duplicateCheck.matchedSignals,
+          titleSimilarity: duplicateCheck.titleSimilarity,
+          duplicateMatchCount: duplicateCheck.duplicateMatchCount,
+        });
+      }
 
       await addDoc(collection(db, "laporan"), {
         kategori,
-        priority,
         judul: trimmedJudul,
         deskripsi: trimmedDeskripsi,
         status: workflowDefaults.status,
@@ -380,17 +580,43 @@ const FormLaporan: React.FC = () => {
         author: currentUser.name || "User",
         authorName: currentUser.name || "User",
         photos: uploadedPhotos,
+        photoFingerprints,
+        duplicateKey: duplicateCheck.duplicateKey,
+        duplicateTitleKey:
+          duplicateCheck.duplicateTitleKey || duplicateSignals.titleKey,
+        ...(duplicateCheck.duplicateLocationKey || duplicateSignals.locationKey
+          ? {
+              duplicateLocationKey:
+                duplicateCheck.duplicateLocationKey ||
+                duplicateSignals.locationKey,
+            }
+          : {}),
+        isDuplicate: duplicateCheck.isDuplicate,
+        ...(duplicateCheck.duplicateOfReportId
+          ? { duplicateOfReportId: duplicateCheck.duplicateOfReportId }
+          : {}),
+        ...(duplicateSource
+          ? { duplicateSource }
+          : {}),
+        duplicateCheckedAt: serverTimestamp(),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
 
       setKategori("IT");
-      setPriority("medium");
       setJudul("");
       setDeskripsi("");
       setPhotos([]);
       setSuccessModalVisible(true);
     } catch (error) {
+      if (uploadedPhotos.length > 0) {
+        await Promise.allSettled(
+          uploadedPhotos.map((photo) =>
+            photo.fileId ? deleteUploadedPhoto(photo.fileId) : Promise.resolve(),
+          ),
+        );
+      }
+
       const message =
         error instanceof Error
           ? error.message
@@ -402,28 +628,6 @@ const FormLaporan: React.FC = () => {
   };
 
   const horizontalPadding = Math.max(16, Math.min(24, SCREEN_WIDTH * 0.06));
-
-  const priorityOptions: {
-    label: string;
-    value: Priority;
-    color: string;
-    desc: string;
-  }[] = [
-    { label: "Rendah", value: "low", color: "#10B981", desc: "Tidak mendesak" },
-    {
-      label: "Sedang",
-      value: "medium",
-      color: "#F59E0B",
-      desc: "Butuh perhatian",
-    },
-    { label: "Tinggi", value: "high", color: "#EF4444", desc: "Mendesak" },
-    {
-      label: "Kritis",
-      value: "critical",
-      color: "#7F1D1D",
-      desc: "Darurat/Bahaya",
-    },
-  ];
 
   return (
     <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
@@ -608,44 +812,6 @@ const FormLaporan: React.FC = () => {
                 </View>
               </TouchableOpacity>
             </View>
-          </View>
-
-          {/* Tingkat Urgensi */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Tingkat Urgensi</Text>
-            <View style={styles.priorityRow}>
-              {priorityOptions.map((opt) => (
-                <TouchableOpacity
-                  key={opt.value}
-                  style={[
-                    styles.priorityChip,
-                    priority === opt.value && {
-                      borderColor: opt.color,
-                      backgroundColor: opt.color + "10",
-                    },
-                  ]}
-                  onPress={() => setPriority(opt.value)}
-                >
-                  <View
-                    style={[styles.priorityDot, { backgroundColor: opt.color }]}
-                  />
-                  <Text
-                    style={[
-                      styles.priorityText,
-                      priority === opt.value && {
-                        color: opt.color,
-                        fontWeight: "700",
-                      },
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={styles.hint}>
-              {priorityOptions.find((o) => o.value === priority)?.desc}
-            </Text>
           </View>
 
           {/* Judul Laporan */}
@@ -944,32 +1110,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   kategoriDescActive: {
-    color: "#6B7280",
-  },
-  priorityRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 4,
-  },
-  priorityChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F9FAFB",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 20,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    gap: 6,
-  },
-  priorityDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  priorityText: {
-    fontSize: 13,
     color: "#6B7280",
   },
   input: {

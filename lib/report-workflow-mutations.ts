@@ -1,4 +1,4 @@
-import type { UnitTarget } from "@/lib/workflow";
+import type { Priority, UnitTarget } from "@/lib/workflow";
 import { auth, db } from "@/lib/firebase";
 import type { NotificationStatus } from "@/lib/notifications";
 import { createNotification } from "@/lib/notifications";
@@ -16,6 +16,11 @@ export interface UnitApprovalInput {
   needsPurchase?: boolean;
   unitApprovalNote?: string;
 }
+
+const VALID_PRIORITIES: Priority[] = ["low", "medium", "high", "critical"];
+
+const isValidPriority = (value: string): value is Priority =>
+  VALID_PRIORITIES.includes(value as Priority);
 
 async function notifyAuthorIfPresent(
   reportId: string,
@@ -39,8 +44,14 @@ async function notifyAuthorIfPresent(
 export async function approveReportAsAdmin(
   reportId: string,
   ctx: WorkflowReportNotifyContext,
+  priority: Priority,
 ) {
+  if (!isValidPriority(priority)) {
+    throw new Error("Tingkat urgensi tidak valid.");
+  }
+
   await updateDoc(doc(db, "laporan", reportId), {
+    priority,
     status: "diproses",
     workflowStage: "unit_review",
     workflowState: "admin_approved",
@@ -138,19 +149,9 @@ export async function approveReportAsUnit(
 
   await notifyAuthorIfPresent(reportId, ctx, {
     title: "Menunggu Business Office",
-    description: `Laporan '${ctx.title}' telah disetujui unit. ${
-      costNeededValue &&
-      typeof costValue !== "undefined" &&
-      !Number.isNaN(costValue)
-        ? `Perkiraan biaya: Rp ${costValue.toLocaleString("id-ID")}. `
-        : ""
-    }${cleanedEstimatedWork ? `Estimasi pengerjaan: ${cleanedEstimatedWork}. ` : ""}${
-      typeof costNeededValue === "boolean"
-        ? costNeededValue
-          ? "Perlu biaya. "
-          : "Tidak perlu biaya. "
-        : ""
-    }${cleanedNote ? `Catatan: ${cleanedNote}` : ""}`,
+    description: `Laporan '${ctx.title}' telah disetujui unit dan sedang menunggu persetujuan Business Office.${
+      cleanedEstimatedWork ? ` Estimasi pengerjaan: ${cleanedEstimatedWork}.` : ""
+    }${cleanedNote ? ` Catatan: ${cleanedNote}` : ""}`,
     status: "terverifikasi",
   });
 }

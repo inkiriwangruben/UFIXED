@@ -131,7 +131,7 @@ const DashboardPelapor: React.FC = () => {
             title: data.title,
             description: data.description,
             status: getPelaporProgressBucket(data.workflowStage),
-            priority: data.priority || "medium",
+            priority: data.priority || "",
             icon: data.icon,
             category: data.kategori,
             date: data.date,
@@ -452,7 +452,9 @@ const DashboardPelapor: React.FC = () => {
                                 ? "#FFF7ED"
                                 : item.priority === "medium"
                                   ? "#EFF6FF"
-                                  : "#F0FDF4",
+                                  : item.priority === "low"
+                                    ? "#F0FDF4"
+                                    : "#F8FAFC",
                           borderColor:
                             item.priority === "critical"
                               ? "#EF4444"
@@ -460,7 +462,9 @@ const DashboardPelapor: React.FC = () => {
                                 ? "#F97316"
                                 : item.priority === "medium"
                                   ? "#3B82F6"
-                                  : "#22C55E",
+                                  : item.priority === "low"
+                                    ? "#22C55E"
+                                    : "#CBD5E1",
                         },
                       ]}
                     >
@@ -472,10 +476,12 @@ const DashboardPelapor: React.FC = () => {
                               item.priority === "critical"
                                 ? "#B91C1C"
                                 : item.priority === "high"
-                                  ? "#C2410C"
-                                  : item.priority === "medium"
-                                    ? "#1D4ED8"
-                                    : "#15803D",
+                                ? "#C2410C"
+                                : item.priority === "medium"
+                                  ? "#1D4ED8"
+                                  : item.priority === "low"
+                                    ? "#15803D"
+                                    : "#64748B",
                           },
                         ]}
                       >
@@ -825,4 +831,3 @@ const styles = StyleSheet.create({
 });
 
 export default DashboardPelapor;
-

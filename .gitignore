@@ -42,3 +42,8 @@ app-example
 # generated native folders
 /ios
 /android
+
+# local Gradle build artifacts
+.gradle-apk-build-85/
+.gradle-apk-build/
+.gradle-local/

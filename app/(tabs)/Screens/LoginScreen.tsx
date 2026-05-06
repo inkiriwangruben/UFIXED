@@ -12,6 +12,7 @@ import {
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -37,9 +38,13 @@ import {
 } from "@/lib/roles";
 import {
   clearNativeGoogleSession,
-  requestPasswordReset,
   signOutCurrentUser,
 } from "@/lib/session";
+import {
+  getServerApiBaseUrl,
+  getServerApiBaseUrlOverride,
+  setServerApiBaseUrlOverride,
+} from "@/lib/server-api";
 import { getUserProfileByUid } from "@/lib/user-profile";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -58,6 +63,7 @@ type PelaporAuthSessionGoogleLoginCardProps = {
   clientConfig: GoogleClientConfig;
   googleLoading: boolean;
   loginError: string;
+  onOpenServerSettings: () => void;
   setGoogleLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setLoginError: React.Dispatch<React.SetStateAction<string>>;
 };
@@ -67,6 +73,7 @@ type PelaporAndroidGoogleLoginCardProps = {
   nativeWebClientId: string;
   googleLoading: boolean;
   loginError: string;
+  onOpenServerSettings: () => void;
   setGoogleLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setLoginError: React.Dispatch<React.SetStateAction<string>>;
 };
@@ -167,6 +174,7 @@ const PelaporAuthSessionGoogleLoginCard: React.FC<
   clientConfig,
   googleLoading,
   loginError,
+  onOpenServerSettings,
   setGoogleLoading,
   setLoginError,
 }) => {
@@ -272,6 +280,13 @@ const PelaporAuthSessionGoogleLoginCard: React.FC<
         </Text>
       </TouchableOpacity>
       {loginError ? <Text style={styles.errorText}>{loginError}</Text> : null}
+      <TouchableOpacity
+        activeOpacity={0.8}
+        style={styles.serverFixButton}
+        onPress={onOpenServerSettings}
+      >
+        <Text style={styles.serverFixButtonText}>Ubah alamat server</Text>
+      </TouchableOpacity>
     </View>
   );
 };
@@ -283,6 +298,7 @@ const PelaporAndroidGoogleLoginCard: React.FC<
   nativeWebClientId,
   googleLoading,
   loginError,
+  onOpenServerSettings,
   setGoogleLoading,
   setLoginError,
 }) => {
@@ -384,6 +400,13 @@ const PelaporAndroidGoogleLoginCard: React.FC<
         </Text>
       </TouchableOpacity>
       {loginError ? <Text style={styles.errorText}>{loginError}</Text> : null}
+      <TouchableOpacity
+        activeOpacity={0.8}
+        style={styles.serverFixButton}
+        onPress={onOpenServerSettings}
+      >
+        <Text style={styles.serverFixButtonText}>Ubah alamat server</Text>
+      </TouchableOpacity>
     </View>
   );
 };
@@ -421,13 +444,20 @@ const LoginScreen: React.FC = () => {
   const [roleModalVisible, setRoleModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [resettingPassword, setResettingPassword] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const [serverModalVisible, setServerModalVisible] = useState(false);
+  const [serverUrlInput, setServerUrlInput] = useState("");
 
   const router = useRouter();
   const googleClientConfig = useMemo(() => getGoogleClientIdConfig(), []);
   const nativeGoogleWebClientId = useMemo(() => getNativeGoogleWebClientId(), []);
   const nativeGoogleModule = useMemo(() => getNativeGoogleSigninModule(), []);
+
+  useEffect(() => {
+    if (serverModalVisible) {
+      setServerUrlInput(getServerApiBaseUrlOverride() || getServerApiBaseUrl());
+    }
+  }, [serverModalVisible]);
 
   useEffect(() => {
     let isMounted = true;
@@ -451,6 +481,23 @@ const LoginScreen: React.FC = () => {
             "Data role akun tidak ditemukan atau belum lengkap. Silakan hubungi admin.",
           );
           return;
+        }
+
+        if (profile.role === "pelapor") {
+          try {
+            await syncPelaporGoogleProfile();
+          } catch (error) {
+            await signOutCurrentUser();
+
+            if (isMounted) {
+              setLoginError(
+                error instanceof Error
+                  ? error.message
+                  : "Sesi pelapor tidak dapat dipulihkan. Silakan login ulang.",
+              );
+            }
+            return;
+          }
         }
 
         router.replace(getDashboardRouteByRole(profile.role));
@@ -526,47 +573,28 @@ const LoginScreen: React.FC = () => {
     setRoleModalVisible((prev) => !prev);
   };
 
-  const handleRequestPasswordReset = async () => {
-    const normalizedEmail = email.trim().toLowerCase();
+  const handleSaveServerUrl = async () => {
+    const normalizedUrl = serverUrlInput.trim();
 
-    if (!normalizedEmail) {
-      setLoginError("Masukkan email terlebih dahulu untuk reset password.");
+    if (!normalizedUrl) {
+      setLoginError("Alamat server wajib diisi.");
       return;
     }
 
-    try {
-      setResettingPassword(true);
-      setLoginError("");
-      await requestPasswordReset(normalizedEmail);
-      Alert.alert(
-        "Email reset terkirim",
-        "Silakan cek inbox email Anda untuk mengatur ulang password.",
-      );
-    } catch (error) {
-      const errorCode =
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        typeof error.code === "string"
-          ? error.code
-          : "";
-
-      if (
-        errorCode === "auth/user-not-found" ||
-        errorCode === "auth/invalid-email"
-      ) {
-        setLoginError("Email tidak ditemukan atau formatnya tidak valid.");
-        return;
-      }
-
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Gagal mengirim email reset password.";
-      Alert.alert("Reset password gagal", message);
-    } finally {
-      setResettingPassword(false);
+    if (!/^https?:\/\/.+:\d+$/i.test(normalizedUrl)) {
+      setLoginError("Format server harus seperti http://192.168.1.4:8080");
+      return;
     }
+
+    await setServerApiBaseUrlOverride(normalizedUrl);
+    setServerModalVisible(false);
+    setLoginError("");
+    Alert.alert("Berhasil", "Alamat server UFIXED berhasil diperbarui.");
+  };
+
+  const openServerSettings = () => {
+    setServerUrlInput(getServerApiBaseUrlOverride() || getServerApiBaseUrl());
+    setServerModalVisible(true);
   };
 
   return (
@@ -660,6 +688,7 @@ const LoginScreen: React.FC = () => {
                       nativeWebClientId={nativeGoogleWebClientId}
                       googleLoading={googleLoading}
                       loginError={loginError}
+                      onOpenServerSettings={openServerSettings}
                       setGoogleLoading={setGoogleLoading}
                       setLoginError={setLoginError}
                     />
@@ -680,6 +709,7 @@ const LoginScreen: React.FC = () => {
                   clientConfig={googleClientConfig}
                   googleLoading={googleLoading}
                   loginError={loginError}
+                  onOpenServerSettings={openServerSettings}
                   setGoogleLoading={setGoogleLoading}
                   setLoginError={setLoginError}
                 />
@@ -740,15 +770,6 @@ const LoginScreen: React.FC = () => {
                 </View>
 
                 <TouchableOpacity
-                  activeOpacity={0.8}
-                  style={styles.forgotPasswordButton}
-                  onPress={handleRequestPasswordReset}
-                  disabled={loading || resettingPassword}
-                >
-                  <Text style={styles.forgotPasswordText}>Lupa Password?</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
                   activeOpacity={0.9}
                   style={[styles.button, loading && styles.buttonDisabled]}
                   onPress={handleLogin}
@@ -764,16 +785,54 @@ const LoginScreen: React.FC = () => {
         </View>
       </ScrollView>
       <BlockingLoader
-        visible={loading || resettingPassword || googleLoading}
+        visible={loading || googleLoading}
         message={
-          resettingPassword
-            ? "Mengirim email reset..."
-            : googleLoading
-              ? "Menyambungkan akun Google..."
-              : "Memverifikasi akun..."
+          googleLoading
+            ? "Menyambungkan akun Google..."
+            : "Memverifikasi akun..."
         }
         accentColor="#1E5BFF"
       />
+      <Modal
+        visible={serverModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setServerModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.serverModalCard}>
+            <Text style={styles.serverModalTitle}>Ubah Alamat Server</Text>
+            <Text style={styles.serverModalSubtitle}>
+              Contoh: http://192.168.1.4:8080
+            </Text>
+            <TextInput
+              style={styles.serverModalInput}
+              placeholder="http://192.168.1.4:8080"
+              placeholderTextColor="#9CA3AF"
+              autoCapitalize="none"
+              keyboardType="url"
+              value={serverUrlInput}
+              onChangeText={setServerUrlInput}
+            />
+            <View style={styles.serverModalActions}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={[styles.serverModalButton, styles.serverModalCancelButton]}
+                onPress={() => setServerModalVisible(false)}
+              >
+                <Text style={styles.serverModalCancelText}>Batal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={[styles.serverModalButton, styles.serverModalSaveButton]}
+                onPress={() => void handleSaveServerUrl()}
+              >
+                <Text style={styles.serverModalSaveText}>Simpan</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -976,16 +1035,76 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#EF4444",
   },
-  forgotPasswordButton: {
-    alignSelf: "flex-end",
-    marginTop: -4,
-    marginBottom: 8,
-    paddingVertical: 4,
+  serverFixButton: {
+    marginTop: 10,
+    alignSelf: "flex-start",
   },
-  forgotPasswordText: {
+  serverFixButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#2563EB",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(17, 24, 39, 0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  serverModalCard: {
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 22,
+  },
+  serverModalTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#111827",
+  },
+  serverModalSubtitle: {
+    marginTop: 6,
     fontSize: 13,
-    fontWeight: "600",
-    color: "#1E5BFF",
+    color: "#6B7280",
+  },
+  serverModalInput: {
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: "#111827",
+    backgroundColor: "#F9FAFB",
+  },
+  serverModalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 18,
+  },
+  serverModalButton: {
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
+  serverModalCancelButton: {
+    backgroundColor: "#F3F4F6",
+  },
+  serverModalSaveButton: {
+    backgroundColor: "#2563EB",
+  },
+  serverModalCancelText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#374151",
+  },
+  serverModalSaveText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
 });
 

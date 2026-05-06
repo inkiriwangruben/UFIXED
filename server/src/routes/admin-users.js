@@ -18,10 +18,10 @@ const MANAGEABLE_ROLES = new Set([
   "business-office",
 ]);
 const NAME_REGEX = /^[\p{L}\s]+$/u;
-const MAX_PELAPOR_NAME_LETTERS = 8;
+const MIN_PELAPOR_NAME_CHARACTERS = 2;
+const MAX_PELAPOR_NAME_CHARACTERS = 25;
 
-const getPelaporNameLetterCount = (value = "") =>
-  Array.from(value).filter((character) => /\p{L}/u.test(character)).length;
+const getCharacterCount = (value = "") => Array.from(value).length;
 
 const getDefaultNameFromEmail = (email) => email.split("@")[0] || "User";
 
@@ -138,9 +138,15 @@ router.post("/users", requireAdmin, async (req, res) => {
       });
     }
 
-    if (getPelaporNameLetterCount(requestedName) > MAX_PELAPOR_NAME_LETTERS) {
+    if (getCharacterCount(requestedName) < MIN_PELAPOR_NAME_CHARACTERS) {
       return res.status(400).json({
-        message: `Nama pelapor maksimal ${MAX_PELAPOR_NAME_LETTERS} huruf.`,
+        message: `Nama pelapor minimal ${MIN_PELAPOR_NAME_CHARACTERS} karakter.`,
+      });
+    }
+
+    if (getCharacterCount(requestedName) > MAX_PELAPOR_NAME_CHARACTERS) {
+      return res.status(400).json({
+        message: `Nama pelapor maksimal ${MAX_PELAPOR_NAME_CHARACTERS} karakter.`,
       });
     }
   } else {

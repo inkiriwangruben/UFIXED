@@ -71,14 +71,99 @@ service cloud.firestore {
         request.resource.data.judul == resource.data.judul &&
         request.resource.data.deskripsi == resource.data.deskripsi &&
         request.resource.data.kategori == resource.data.kategori &&
-        request.resource.data.priority == resource.data.priority &&
-        request.resource.data.unitTarget == resource.data.unitTarget;
+        request.resource.data.unitTarget == resource.data.unitTarget &&
+        photoMetadataUnchanged() &&
+        duplicateMetadataUnchanged();
+    }
+
+    function validPriority(priority) {
+      return priority in ['low', 'medium', 'high', 'critical'];
+    }
+
+    function validDuplicateSource(source) {
+      return source in [
+        'text',
+        'image',
+        'text+image',
+        'title',
+        'location',
+        'title+location',
+        'title+image',
+        'location+image',
+        'title+location+image'
+      ];
+    }
+
+    function validPhotoFingerprintMetadata() {
+      return !('photoFingerprints' in request.resource.data) ||
+        request.resource.data.photoFingerprints is list;
+    }
+
+    function validDuplicateMetadata() {
+      return request.resource.data.duplicateKey is string &&
+        request.resource.data.duplicateKey.size() > 0 &&
+        request.resource.data.duplicateTitleKey is string &&
+        request.resource.data.duplicateTitleKey.size() > 0 &&
+        (
+          !('duplicateLocationKey' in request.resource.data) ||
+          (
+            request.resource.data.duplicateLocationKey is string &&
+            request.resource.data.duplicateLocationKey.size() > 0
+          )
+        ) &&
+        request.resource.data.isDuplicate is bool &&
+        request.resource.data.duplicateCheckedAt is timestamp &&
+        validPhotoFingerprintMetadata() &&
+        (
+          (
+            request.resource.data.isDuplicate == false &&
+            !('duplicateOfReportId' in request.resource.data) &&
+            !('duplicateSource' in request.resource.data)
+          ) ||
+          (
+            request.resource.data.isDuplicate == true &&
+            request.resource.data.duplicateOfReportId is string &&
+            request.resource.data.duplicateOfReportId.size() > 0 &&
+            (
+              !('duplicateSource' in request.resource.data) ||
+              (
+                request.resource.data.duplicateSource is string &&
+                validDuplicateSource(request.resource.data.duplicateSource)
+              )
+            )
+          )
+        );
+    }
+
+    function photoMetadataUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'photos',
+        'photoFingerprints'
+      ]);
+    }
+
+    function duplicateMetadataUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'duplicateKey',
+        'duplicateTitleKey',
+        'duplicateLocationKey',
+        'isDuplicate',
+        'duplicateOfReportId',
+        'duplicateCheckedAt',
+        'duplicateSource'
+      ]);
+    }
+
+    function priorityUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['priority']);
     }
 
     function validInitialWorkflow() {
       return request.resource.data.status == 'menunggu' &&
         request.resource.data.workflowStage == 'admin_review' &&
         request.resource.data.workflowState == 'submitted' &&
+        !('priority' in request.resource.data) &&
+        validDuplicateMetadata() &&
         (
           (request.resource.data.kategori == 'IT' &&
             request.resource.data.unitTarget == 'department-it') ||
@@ -91,7 +176,8 @@ service cloud.firestore {
       return resource.data.workflowStage == 'admin_review' &&
         request.resource.data.workflowStage == 'unit_review' &&
         request.resource.data.workflowState == 'admin_approved' &&
-        request.resource.data.status == 'diproses';
+        request.resource.data.status == 'diproses' &&
+        validPriority(request.resource.data.priority);
     }
 
     function rejectFromCurrentStage(roleName) {
@@ -199,9 +285,10 @@ service cloud.firestore {
           (isAdmin() &&
             (
               adminApprove() ||
-              rejectFromCurrentStage('admin')
+              (priorityUnchanged() && rejectFromCurrentStage('admin'))
             )) ||
           (isDepartmentIT() &&
+            priorityUnchanged() &&
             (
               unitApprove('department-it') ||
               rejectFromCurrentStage('department-it') ||
@@ -209,6 +296,7 @@ service cloud.firestore {
               unitComplete('department-it')
             )) ||
           (isTukang() &&
+            priorityUnchanged() &&
             (
               unitApprove('tukang') ||
               rejectFromCurrentStage('tukang') ||
@@ -216,6 +304,7 @@ service cloud.firestore {
               unitComplete('tukang')
             )) ||
           (isBusinessOffice() &&
+            priorityUnchanged() &&
             (
               boApprove() ||
               rejectFromCurrentStage('business-office')

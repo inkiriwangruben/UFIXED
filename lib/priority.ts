@@ -1,4 +1,8 @@
-export const formatPriorityLabel = (priority: string) => {
+export const formatPriorityLabel = (priority?: string | null) => {
+  if (!priority) {
+    return "Belum ditentukan";
+  }
+
   switch (priority.toLowerCase()) {
     case "critical":
       return "Kritis";
@@ -6,7 +10,9 @@ export const formatPriorityLabel = (priority: string) => {
       return "Tinggi";
     case "medium":
       return "Sedang";
-    default:
+    case "low":
       return "Rendah";
+    default:
+      return "Belum ditentukan";
   }
 };

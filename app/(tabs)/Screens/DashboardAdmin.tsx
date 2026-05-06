@@ -40,6 +40,8 @@ interface AdminLaporan {
   workflowState: WorkflowState;
   unitTarget: UnitTarget;
   authorUid?: string;
+  isDuplicate: boolean;
+  duplicateOfReportId?: string;
   rejectReason?: string;
 }
 
@@ -92,6 +94,8 @@ const DashboardAdmin: React.FC = () => {
                 workflowStage: data.workflowStage,
                 workflowState: data.workflowState,
                 unitTarget: data.unitTarget,
+                isDuplicate: data.isDuplicate,
+                duplicateOfReportId: data.duplicateOfReportId,
                 rejectReason: data.rejectionReason,
               } satisfies AdminLaporan;
             }),
@@ -394,6 +398,13 @@ const DashboardAdmin: React.FC = () => {
                   {item.description}
                 </Text>
 
+                {item.isDuplicate ? (
+                  <View style={styles.duplicateBadge}>
+                    <Feather name="copy" size={12} color="#B45309" />
+                    <Text style={styles.duplicateBadgeText}>Duplikat</Text>
+                  </View>
+                ) : null}
+
                 {/* Tahap & Tujuan removed per user request */}
 
                 <View style={styles.reportFooterRow}>
@@ -422,7 +433,9 @@ const DashboardAdmin: React.FC = () => {
                                 ? "#FFF7ED"
                                 : item.priority === "medium"
                                   ? "#EFF6FF"
-                                  : "#F0FDF4",
+                                  : item.priority === "low"
+                                    ? "#F0FDF4"
+                                    : "#F8FAFC",
                           borderColor:
                             item.priority === "critical"
                               ? "#EF4444"
@@ -430,7 +443,9 @@ const DashboardAdmin: React.FC = () => {
                                 ? "#F97316"
                                 : item.priority === "medium"
                                   ? "#3B82F6"
-                                  : "#22C55E",
+                                  : item.priority === "low"
+                                    ? "#22C55E"
+                                    : "#CBD5E1",
                         },
                       ]}
                     >
@@ -442,10 +457,12 @@ const DashboardAdmin: React.FC = () => {
                               item.priority === "critical"
                                 ? "#B91C1C"
                                 : item.priority === "high"
-                                  ? "#C2410C"
-                                  : item.priority === "medium"
-                                    ? "#1D4ED8"
-                                    : "#15803D",
+                                ? "#C2410C"
+                                : item.priority === "medium"
+                                  ? "#1D4ED8"
+                                  : item.priority === "low"
+                                    ? "#15803D"
+                                    : "#64748B",
                           },
                         ]}
                       >
@@ -730,6 +747,25 @@ const styles = StyleSheet.create({
     color: "#374151",
     marginBottom: 12,
   },
+  duplicateBadge: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "#FEF3C7",
+    borderWidth: 1,
+    borderColor: "#F59E0B",
+    marginBottom: 12,
+  },
+  duplicateBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#B45309",
+    textTransform: "uppercase",
+  },
   reportFooterRow: {
     flexDirection: "column",
     alignItems: "flex-start",
@@ -780,4 +816,3 @@ const styles = StyleSheet.create({
 });
 
 export default DashboardAdmin;
-

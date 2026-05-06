@@ -43,33 +43,15 @@ interface UserItem {
 
 const NAME_REGEX = /^[\p{L}\s]+$/u;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MAX_PELAPOR_NAME_LETTERS = 8;
+const MIN_PELAPOR_NAME_CHARACTERS = 2;
+const MAX_PELAPOR_NAME_CHARACTERS = 25;
 const PASSWORD_REQUIREMENTS_MESSAGE =
   "Password wajib diisi, minimal 8 karakter, dengan huruf besar, huruf kecil, dan angka.";
 
-const isLetterCharacter = (value: string) => /\p{L}/u.test(value);
+const getCharacterCount = (value: string) => Array.from(value).length;
 
-const getPelaporNameLetterCount = (value: string) =>
-  Array.from(value).filter((character) => isLetterCharacter(character)).length;
-
-const limitPelaporNameLetters = (value: string) => {
-  let letterCount = 0;
-  let result = "";
-
-  for (const character of Array.from(value)) {
-    if (isLetterCharacter(character)) {
-      if (letterCount >= MAX_PELAPOR_NAME_LETTERS) {
-        continue;
-      }
-
-      letterCount += 1;
-    }
-
-    result += character;
-  }
-
-  return result;
-};
+const limitPelaporNameCharacters = (value: string) =>
+  Array.from(value).slice(0, MAX_PELAPOR_NAME_CHARACTERS).join("");
 
 const getNameValidationError = (
   value: string,
@@ -93,8 +75,12 @@ const getNameValidationError = (
     return "Nama hanya boleh berisi huruf dan spasi.";
   }
 
-  if (getPelaporNameLetterCount(trimmedValue) > MAX_PELAPOR_NAME_LETTERS) {
-    return `Nama pelapor maksimal ${MAX_PELAPOR_NAME_LETTERS} huruf.`;
+  if (getCharacterCount(trimmedValue) < MIN_PELAPOR_NAME_CHARACTERS) {
+    return `Nama pelapor minimal ${MIN_PELAPOR_NAME_CHARACTERS} karakter.`;
+  }
+
+  if (getCharacterCount(trimmedValue) > MAX_PELAPOR_NAME_CHARACTERS) {
+    return `Nama pelapor maksimal ${MAX_PELAPOR_NAME_CHARACTERS} karakter.`;
   }
 
   return "";
@@ -589,7 +575,7 @@ const KelolaUserScreen: React.FC = () => {
                     setNameError(getNameValidationError(newName, newRole, true));
                   }}
                   onChangeText={(value) => {
-                    const limitedValue = limitPelaporNameLetters(value);
+                    const limitedValue = limitPelaporNameCharacters(value);
 
                     setNewName(limitedValue);
                     setNameTouched(true);
